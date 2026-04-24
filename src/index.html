@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http: https:; connect-src 'self' http: https:;">
+  <title>Android Device Manager</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+  <nav id="sidebar">
+    <button class="nav-btn active nav-emoji" data-panel="device" title="디바이스 정보">
+      <span class="nav-icon">📱</span><span class="nav-label">Device</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="mirror" title="모니터링">
+      <span class="nav-icon">🖥️</span><span class="nav-label">모니터링</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="logcat" title="Logcat" style="position:relative">
+      <span class="nav-icon">🐱</span><span class="nav-label">Logcat</span>
+      <span class="nav-crash-badge" id="nav-crash-badge" style="display:none">0</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="analysis" title="TC 생성">
+      <span class="nav-icon">📝</span><span class="nav-label">TC Generator</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="orca" title="Orca (TC 등록)">
+      <span class="nav-icon">🐳</span><span class="nav-label">Orca</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="apps" title="앱 관리">
+      <span class="nav-icon">📦</span><span class="nav-label">App Manager</span>
+    </button>
+    <div style="flex:1"></div>
+    <button class="nav-btn nav-emoji" id="theme-toggle-btn" title="다크/라이트 모드 전환" type="button">
+      <span class="nav-icon"><span id="theme-icon-dark">🌙</span><span id="theme-icon-light" style="display:none">☀️</span></span>
+      <span class="nav-label">Theme</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="notice" title="TODO">
+      <span class="nav-icon">📌</span><span class="nav-label">TODO</span>
+    </button>
+  </nav>
+
+  <div id="main-content">
+    <div id="toolbar">
+      <span class="status-dot disconnected" id="status-dot"></span>
+      <span class="toolbar-label">Device</span>
+      <select id="device-selector">
+        <option value="">디바이스를 연결해주세요...</option>
+      </select>
+      <button class="btn btn-sm" id="rename-device-btn" title="현재 디바이스 별칭 변경">✏️ 이름</button>
+      <button class="btn btn-sm" id="wireless-connect-btn">무선 연결</button>
+      <button class="btn btn-sm" id="wireless-disconnect-btn" style="display:none">무선 해제</button>
+    </div>
+
+    <div id="rename-modal" class="modal-overlay" style="display:none">
+      <div class="modal-box" style="max-width:400px">
+        <h3 style="margin-bottom:8px">디바이스 별칭 변경</h3>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:4px">시리얼: <span id="rename-serial" style="font-family:monospace"></span></p>
+        <p style="font-size:11px;color:var(--text-muted);margin-bottom:12px">비우고 저장하면 기본 모델명으로 돌아갑니다 (최대 30자)</p>
+        <input class="input" id="rename-input" placeholder="예: 갤A34, 테스트폰1" maxlength="30" style="width:100%">
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end">
+          <button class="btn btn-sm" id="rename-cancel">취소</button>
+          <button class="btn btn-sm btn-primary" id="rename-save">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="wireless-modal" class="modal-overlay" style="display:none">
+      <div class="modal-box">
+        <h3 style="margin-bottom:12px">무선 디버깅 연결</h3>
+        <div style="background:rgba(100,150,255,0.08);border:1px solid rgba(100,150,255,0.3);border-radius:6px;padding:10px;margin-bottom:12px">
+          <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">
+            ⭐ <b>추천</b>: 현재 디바이스(USB든 무선이든)의 포트를 <b>5555로 고정</b>합니다. 이후 VPN/네트워크 변경에도 안정적으로 자동 재연결됩니다.
+          </div>
+          <button class="btn btn-sm btn-primary" id="wireless-fix-port" style="width:100%">📌 5555 포트로 고정</button>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:6px">
+            💡 무선 연결이 안 되어있다면 USB 케이블로 연결 후 시도하세요. (폰 재부팅 후엔 USB 한 번 필요)
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:16px">
+          또는 수동 페어링: 설정 → 개발자 옵션 → 무선 디버깅 → 페어링 코드로 기기 페어링
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div id="remembered-wireless-section" style="display:none">
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">기억된 무선 디바이스</label>
+            <div id="remembered-wireless-list" style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto"></div>
+            <div class="modal-divider"></div>
+          </div>
+          <button class="btn btn-sm btn-accent" id="wireless-auto-ip" style="width:100%">📡 디바이스 IP 자동 입력</button>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">IP:Port (페어링용)</label>
+            <input class="input" id="pair-address" placeholder="예: 192.168.0.10:37123">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">페어링 코드 (6자리)</label>
+            <input class="input" id="pair-code" placeholder="예: 482924" maxlength="6">
+          </div>
+          <button class="btn btn-primary" id="pair-btn">페어링</button>
+          <div class="modal-divider"></div>
+          <div>
+            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px">IP:Port (연결용 — 페어링 후)</label>
+            <input class="input" id="connect-address" placeholder="예: 192.168.0.10:43567">
+          </div>
+          <button class="btn btn-primary" id="connect-btn">연결</button>
+        </div>
+        <div id="wireless-status" style="margin-top:12px;font-size:12px;color:var(--text-muted)"></div>
+        <button class="btn btn-sm" id="wireless-modal-close" style="margin-top:12px">닫기</button>
+      </div>
+    </div>
+
+    <div id="panel-container">
+      <!-- Device Panel -->
+      <div class="panel active" id="panel-device">
+        <h2 class="panel-title">디바이스 정보</h2>
+        <div class="device-layout">
+          <div class="device-info-side" id="device-info-content">
+            <p style="color:var(--text-muted)">디바이스를 선택하면 정보가 표시됩니다.</p>
+          </div>
+          <div class="device-visual-side" id="device-visual">
+          </div>
+        </div>
+        <div class="device-guides">
+          <div class="guide-card">
+            <div class="guide-card-title">📡 무선 연결 방법</div>
+            <div class="guide-card-body">
+              <p><strong>⭐ 권장: 5555 포트 고정 (1회 세팅)</strong></p>
+              <ol>
+                <li>USB로 디바이스 연결 (또는 무선이 이미 연결된 상태)</li>
+                <li>상단 <b>무선 연결</b> → <b>📌 5555 포트로 고정</b> 클릭</li>
+                <li>이후 앱을 켤 때마다 <b>자동 재연결</b>됨 (VPN/네트워크가 바뀌어도 OK)</li>
+              </ol>
+              <p style="margin-top:8px;color:var(--text-muted);font-size:11px">
+                💡 폰을 재부팅하면 무선 디버깅 포트가 초기화되므로 USB로 한 번 다시 연결해 5555 고정을 해주세요.
+              </p>
+
+              <p style="margin-top:10px"><strong>대체: 수동 페어링 (USB 없이 첫 연결)</strong></p>
+              <ol>
+                <li>폰: 설정 → 개발자 옵션 → <b>무선 디버깅</b> ON</li>
+                <li>"페어링 코드로 기기 페어링" 터치 → IP:Port / 6자리 코드 표시</li>
+                <li>앱: <b>무선 연결</b> 모달에서 페어링 IP·코드 입력 → <b>페어링</b></li>
+                <li>같은 화면 하단 연결용 IP:Port 입력 → <b>연결</b></li>
+              </ol>
+
+              <p style="margin-top:10px"><strong>기억된 디바이스 자동 재연결</strong></p>
+              <p style="color:var(--text-muted);font-size:11px;margin:0">
+                한 번 연결한 무선 디바이스는 자동으로 기억되어, 앱 시작 시 백그라운드에서 재연결을 시도합니다. 무선 모달의 "기억된 무선 디바이스" 목록에서 직접 연결/제거도 가능.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Apps Panel -->
+      <div class="panel" id="panel-apps">
+        <h2 class="panel-title">앱 관리</h2>
+        <div class="drop-zone" id="apk-drop-zone">
+          APK 파일을 드래그하거나 클릭 — 패키지 선택 시 클린 설치 (삭제→재설치)
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
+          <input class="input" id="package-search" placeholder="패키지 검색..." style="flex:1">
+          <button class="btn btn-sm" id="refresh-packages">새로고침</button>
+        </div>
+        <div class="package-list" id="package-list"></div>
+      </div>
+
+      <!-- Logcat Panel -->
+      <div class="panel" id="panel-logcat">
+        <h2 class="panel-title">Logcat 모니터링</h2>
+        <div class="logcat-container">
+          <div class="logcat-toolbar">
+            <button class="btn btn-sm btn-primary" id="logcat-toggle">시작</button>
+            <button class="btn btn-sm" id="logcat-clear">지우기</button>
+            <select class="filter-select" id="logcat-level">
+              <option value="">전체 레벨</option>
+              <option value="V">Verbose</option>
+              <option value="D">Debug</option>
+              <option value="I">Info</option>
+              <option value="W">Warning</option>
+              <option value="E">Error</option>
+            </select>
+            <input class="input" id="logcat-filter" placeholder="태그/키워드 필터..." style="width:200px">
+            <label style="font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:4px;margin-left:auto;">
+              <input type="checkbox" id="logcat-autoscroll" checked> 자동스크롤
+            </label>
+            <button class="btn btn-sm" id="logcat-save">저장</button>
+            <span class="badge" id="logcat-count">0 lines</span>
+          </div>
+          <div class="logcat-output" id="logcat-output"></div>
+        </div>
+        <div class="crash-history" id="crash-history">
+          <div class="crash-history-header">
+            <span class="crash-history-title">크래시 감지 <span class="crash-badge" id="crash-badge" style="display:none">0</span></span>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-sm" id="crash-test" title="테스트용 더미 크래시">테스트</button>
+              <button class="btn btn-sm" id="crash-open-folder">폴더</button>
+              <button class="btn btn-sm" id="crash-clear-history">초기화</button>
+            </div>
+          </div>
+          <div class="crash-list" id="crash-list">
+            <div class="crash-empty">크래시가 감지되면 여기에 표시됩니다.</div>
+          </div>
+        </div>
+        <div class="crash-detail-overlay" id="crash-detail-overlay" style="display:none">
+          <div class="crash-detail-box">
+            <div class="crash-detail-header">
+              <span id="crash-detail-title">크래시 상세</span>
+              <button class="btn btn-sm" id="crash-detail-close">닫기</button>
+            </div>
+            <pre class="crash-detail-log" id="crash-detail-log"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Files Panel -->
+      <div class="panel" id="panel-files">
+        <h2 class="panel-title">파일 매니저</h2>
+        <div class="file-browser">
+          <div class="file-path-bar">
+            <button class="btn btn-sm" id="file-up">↑</button>
+            <input class="input" id="file-path-input" value="/sdcard" style="flex:1">
+            <button class="btn btn-sm" id="file-go">이동</button>
+            <button class="btn btn-sm" id="file-refresh">새로고침</button>
+            <button class="btn btn-sm" id="file-upload">업로드</button>
+          </div>
+          <div class="file-list" id="file-list"></div>
+        </div>
+      </div>
+
+      <!-- Mirror & Inspector Panel (통합) -->
+      <div class="panel" id="panel-mirror">
+        <div class="mirror-inspector-toolbar">
+          <button class="btn btn-primary" id="scrcpy-toggle">scrcpy (고성능)</button>
+          <button class="btn" id="mirror-toggle">내장 미러링</button>
+          <button class="btn" id="mirror-screenshot">스크린샷</button>
+          <button class="btn btn-record" id="record-toggle" title="화면 녹화"><span class="rec-dot"></span><span class="rec-label">REC</span></button>
+          <div class="toolbar-divider"></div>
+          <button class="btn" id="inspector-refresh">UI 스캔</button>
+          <button class="btn btn-sm btn-accent" id="inspector-copy-selector">셀렉터</button>
+          <div class="toolbar-divider"></div>
+          <span class="badge" id="mirror-status">중지됨</span>
+        </div>
+        <div class="mirror-inspector-layout">
+          <div class="mi-screen-wrap">
+            <div class="mi-screen" id="mi-screen">
+              <img id="mi-img" src="" alt="">
+              <canvas id="mi-canvas"></canvas>
+              <div class="mirror-placeholder" id="mi-placeholder">미러링 시작을 눌러주세요</div>
+            </div>
+            <div class="mi-log-buttons">
+              <button class="btn btn-sm btn-accent" id="pull-all-logs">전체 로그 추출</button>
+              <button class="btn btn-sm btn-folder" id="open-logs-folder">로그 폴더</button>
+              <button class="btn btn-sm btn-folder" id="open-screenshot-folder">스크린샷/녹화 폴더</button>
+            </div>
+          </div>
+          <div class="mi-right">
+            <div class="mi-upper-row">
+              <div class="mi-inspect-col">
+                <div class="mi-tree-wrap">
+                  <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border)">UI 트리</div>
+                  <div class="inspector-tree" id="inspector-tree"></div>
+                </div>
+                <div class="mi-props-wrap">
+                  <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border)">속성</div>
+                  <div class="inspector-props" id="inspector-props">
+                    <p style="color:var(--text-muted);font-size:12px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mi-bottom-row">
+              <div class="mi-appinfo-wrap">
+                <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+                  <span>OVERDARE 앱 정보</span>
+                  <div style="display:flex;gap:4px">
+                    <button class="btn btn-sm btn-accent" id="fetch-app-info" style="padding:2px 8px;font-size:11px">조회</button>
+                    <button class="btn btn-sm btn-folder" id="copy-app-info" style="display:none;padding:2px 8px;font-size:11px">복사</button>
+                  </div>
+                </div>
+                <div class="appinfo-grid">
+                  <div class="appinfo-row"><span class="appinfo-label">서버환경</span><span class="appinfo-value" id="app-info-server">-</span></div>
+                  <div class="appinfo-row"><span class="appinfo-label">언리얼버전</span><span class="appinfo-value" id="app-info-unreal">-</span></div>
+                  <div class="appinfo-row"><span class="appinfo-label">앱버전</span><span class="appinfo-value" id="app-info-appver">-</span></div>
+                </div>
+              </div>
+              <div class="mi-memo-wrap">
+                <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+                  <span>메모</span>
+                  <button class="btn btn-sm" id="memo-clear" style="padding:2px 8px;font-size:11px">지우기</button>
+                </div>
+                <textarea id="inspector-memo" placeholder="복사한 값을 여기에 붙여넣기..."></textarea>
+              </div>
+            </div>
+            <div class="mi-log-viewer" id="extracted-log-viewer" style="display:none">
+              <div class="extracted-log-header">
+                <span id="extracted-log-info"></span>
+                <button class="btn btn-sm" id="extracted-log-close">닫기</button>
+              </div>
+              <div class="logcat-output" id="extracted-log-content"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- TC Generator (embedded webview) -->
+      <div class="panel" id="panel-analysis" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600">TC Generator</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="tc-url-label">http://10.40.32.42:3002</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="tc-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="tc-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="tc-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="tc-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <webview id="tc-webview" data-src="http://10.40.32.42:3002" data-partition="persist:tc-generator" style="flex:1;width:100%;height:100%" allowpopups></webview>
+      </div>
+
+      <!-- Orca (embedded webview) -->
+      <div class="panel" id="panel-orca" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600">Orca</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="orca-url-label">https://orca.ovdr.io/</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="orca-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="orca-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="orca-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="orca-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <webview id="orca-webview" data-src="https://orca.ovdr.io/" data-partition="persist:orca" style="flex:1;width:100%;height:100%" allowpopups></webview>
+      </div>
+      <!-- Notice Panel -->
+      <div class="panel" id="panel-notice">
+        <h2 class="panel-title">TODO</h2>
+        <div class="notice-content">
+          <div class="notice-section">
+            <h3 class="notice-section-title">📋 향후 추가 예정</h3>
+            <div class="notice-list">
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>Slack 크래시 알림 연동 (Webhook으로 자동 전송)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>TC 실행 체크리스트 (Pass/Fail/Skip + 결과 내보내기)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>퍼포먼스 모니터 (CPU/메모리/배터리 실시간 그래프)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>원클릭 버그 리포트 (스크린샷+로그+디바이스 정보 자동 수집)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>Monkey 자동 스트레스 테스트</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>다중 디바이스 비교 (동시 설치, 스크린샷 비교)</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/app.js"></script>
+  <script src="panels/device.js"></script>
+  <script src="panels/apps.js"></script>
+  <script src="panels/logcat.js"></script>
+  <script src="panels/files.js"></script>
+  <script src="panels/mirror-inspector.js"></script>
+  <script src="panels/tc-generator.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+{
+  "name": "android-device-manager",
+  "version": "1.0.0",
+  "description": "Android Device Manager - ADB/scrcpy 기반 디바이스 관리 도구",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder --win portable",
+    "build:mac": "electron-builder --mac dir",
+    "build:linux": "electron-builder --linux AppImage",
+    "build:installer": "electron-builder --win nsis"
+  },
+  "author": "",
+  "license": "MIT",
+  "build": {
+    "appId": "com.overdare.device-manager",
+    "productName": "Android Device Manager",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "webview-preload.js",
+      "src/**/*",
+      "lib/**/*"
+    ],
+    "asarUnpack": [
+      "webview-preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/scrcpy",
+        "to": "scrcpy",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "vendor/scrcpy/icon.ico",
+      "sign": false,
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "vendor/scrcpy/icon.ico",
+      "artifactName": "AndroidDeviceManager-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "AndroidDeviceManager-Portable.exe"
+    },
+    "mac": {
+      "target": [
+        "dir"
+      ],
+      "identity": null
+    }
+  },
+  "devDependencies": {
+    "electron": "^41.0.4",
+    "electron-builder": "^25.1.8"
+  }
+}
