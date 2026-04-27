@@ -41,6 +41,9 @@ contextBridge.exposeInMainWorld('api', {
   onLogcatLine: (cb) => {
     ipcRenderer.on('logcat-line', (_, line) => cb(line));
   },
+  onLogcatLines: (cb) => {
+    ipcRenderer.on('logcat-lines', (_, lines) => cb(lines));
+  },
 
   listFiles: (serial, p) => ipcRenderer.invoke('adb:list-files', serial, p),
   pullFile: (serial, remotePath) => ipcRenderer.invoke('adb:pull-file', serial, remotePath),

@@ -1,9 +1,12 @@
 const LogcatPanel = {
   running: false,
   lines: [],
-  maxLines: 10000,
+  maxLines: 5000,
+  maxDomNodes: 2000,
   autoScroll: true,
   crashCount: 0,
+  _pendingRender: [],
+  _renderScheduled: false,
 
   init() {
     document.getElementById('logcat-toggle').addEventListener('click', () => this.toggle());
@@ -19,7 +22,11 @@ const LogcatPanel = {
       document.getElementById('crash-detail-overlay').style.display = 'none';
     });
 
-    window.api.onLogcatLine((line) => this.addLine(line));
+    if (window.api.onLogcatLines) {
+      window.api.onLogcatLines((lines) => this.addLines(lines));
+    } else {
+      window.api.onLogcatLine((line) => this.addLines([line]));
+    }
     window.api.onCrashDetected((crash) => this.onCrashDetected(crash));
   },
 
@@ -118,8 +125,9 @@ const LogcatPanel = {
   async toggle() {
     const btn = document.getElementById('logcat-toggle');
     if (this.running) {
-      await window.api.stopLogcat();
       this.running = false;
+      this._pendingRender = [];
+      await window.api.stopLogcat();
       btn.textContent = '시작';
       btn.classList.remove('btn-danger');
       btn.classList.add('btn-primary');
@@ -133,26 +141,55 @@ const LogcatPanel = {
     }
   },
 
-  addLine(raw) {
-    const levelFilter = document.getElementById('logcat-level').value;
-    const textFilter = document.getElementById('logcat-filter').value.toLowerCase();
+  addLines(rawLines) {
+    if (!this.running || !rawLines || !rawLines.length) return;
 
-    this.lines.push(raw);
+    for (const raw of rawLines) {
+      this.lines.push(raw);
+    }
     if (this.lines.length > this.maxLines) {
       this.lines = this.lines.slice(-this.maxLines);
     }
 
-    const level = this.parseLevel(raw);
-    if (levelFilter && level !== levelFilter && this.levelRank(level) < this.levelRank(levelFilter)) return;
-    if (textFilter && !raw.toLowerCase().includes(textFilter)) return;
+    const levelFilter = document.getElementById('logcat-level').value;
+    const textFilter = document.getElementById('logcat-filter').value.toLowerCase();
+
+    for (const raw of rawLines) {
+      const level = this.parseLevel(raw);
+      if (levelFilter && level !== levelFilter && this.levelRank(level) < this.levelRank(levelFilter)) continue;
+      if (textFilter && !raw.toLowerCase().includes(textFilter)) continue;
+      this._pendingRender.push({ raw, level });
+    }
+
+    this._scheduleRender();
+  },
+
+  _scheduleRender() {
+    if (this._renderScheduled) return;
+    this._renderScheduled = true;
+    requestAnimationFrame(() => {
+      this._renderScheduled = false;
+      this._flushRender();
+    });
+  },
+
+  _flushRender() {
+    if (!this._pendingRender.length) return;
+    const pending = this._pendingRender;
+    this._pendingRender = [];
 
     const output = document.getElementById('logcat-output');
-    const div = document.createElement('div');
-    div.className = `log-line log-${level}`;
-    div.textContent = raw;
-    output.appendChild(div);
+    const frag = document.createDocumentFragment();
+    for (const { raw, level } of pending) {
+      const div = document.createElement('div');
+      div.className = `log-line log-${level}`;
+      div.textContent = raw;
+      frag.appendChild(div);
+    }
+    output.appendChild(frag);
 
-    if (output.children.length > this.maxLines) {
+    let over = output.children.length - this.maxDomNodes;
+    while (over-- > 0 && output.firstChild) {
       output.removeChild(output.firstChild);
     }
 

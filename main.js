@@ -212,16 +212,30 @@ function setupIpcHandlers() {
   ipcMain.handle('adb:force-stop', (_, serial, pkg) => adb.forceStop(serial, pkg));
   ipcMain.handle('adb:clear-data', (_, serial, pkg) => adb.clearData(serial, pkg));
 
+  let logcatBuffer = [];
+  let logcatFlushTimer = null;
+  const flushLogcat = () => {
+    if (!logcatBuffer.length) return;
+    const batch = logcatBuffer;
+    logcatBuffer = [];
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('logcat-lines', batch);
+    }
+  };
   ipcMain.handle('adb:start-logcat', (_, serial, filters) => {
+    logcatBuffer = [];
+    if (logcatFlushTimer) { clearInterval(logcatFlushTimer); }
+    logcatFlushTimer = setInterval(flushLogcat, 100);
     adb.startLogcat(serial, filters, (line) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('logcat-line', line);
-      }
+      logcatBuffer.push(line);
+      if (logcatBuffer.length >= 500) flushLogcat();
     });
     return { success: true };
   });
   ipcMain.handle('adb:stop-logcat', () => {
     adb.stopLogcat();
+    if (logcatFlushTimer) { clearInterval(logcatFlushTimer); logcatFlushTimer = null; }
+    logcatBuffer = [];
     return { success: true };
   });
   ipcMain.handle('adb:clear-logcat', (_, serial) => adb.clearLogcat(serial));
