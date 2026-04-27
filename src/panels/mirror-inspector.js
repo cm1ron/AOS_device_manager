@@ -70,6 +70,36 @@ const MirrorInspector = {
     });
   },
 
+  async cleanupForDeviceSwitch() {
+    if (this.recording) {
+      this.stopRecordTimer();
+      this.recording = false;
+      const btn = document.getElementById('record-toggle');
+      btn.classList.remove('recording');
+      try { await window.api.stopRecording(this._lastDeviceForRecording || ''); } catch {}
+    }
+    if (this.scrcpyRunning) {
+      try { await window.api.stopScrcpy(); } catch {}
+      this.scrcpyRunning = false;
+      const btn = document.getElementById('scrcpy-toggle');
+      btn.textContent = 'scrcpy (고성능)';
+      btn.classList.remove('btn-danger');
+      btn.classList.add('btn-primary');
+    }
+    if (this.mirroring) {
+      await this.stopMirror();
+    }
+    this.nodes = [];
+    this.selectedNode = null;
+    this.inspectMode = false;
+    const treeEl = document.getElementById('inspector-tree');
+    if (treeEl) treeEl.innerHTML = '<p style="padding:12px;color:var(--text-muted)">UI 스캔을 눌러 요소를 불러오세요</p>';
+    const propsEl = document.getElementById('inspector-props');
+    if (propsEl) propsEl.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>';
+    this.clearScreen();
+    document.getElementById('mi-placeholder').textContent = '미러링 시작을 눌러주세요';
+  },
+
   // --- 녹화 ---
 
   async toggleRecording() {
@@ -214,11 +244,67 @@ const MirrorInspector = {
     btn.classList.add('btn-danger');
     document.getElementById('mirror-status').textContent = '미러링 중';
     document.getElementById('mi-placeholder').style.display = 'none';
-    this.startMirrorLoop();
+
+    this.streamMode = false;
+    this.deviceSize = null;
+    if (window.H264Player && window.H264Player.isSupported()) {
+      try {
+        const canvas = document.getElementById('mi-canvas');
+        window.H264Player.onResize = (w, h) => {
+          this.imgNaturalWidth = w;
+          this.imgNaturalHeight = h;
+          const img = document.getElementById('mi-img');
+          img.classList.remove('visible');
+          canvas.classList.add('stream-active');
+          this.syncCanvasStream();
+        };
+        window.H264Player.onFrame = () => {
+          if (this.selectedNode) this.drawOverlays();
+        };
+        const startResult = await window.H264Player.start(canvas, App.currentDevice, { bitRate: '4M' });
+        if (startResult && startResult.deviceSize) this.deviceSize = startResult.deviceSize;
+        this.streamMode = true;
+        document.getElementById('mirror-status').textContent = '미러링 중 (스트림)';
+      } catch (e) {
+        console.warn('H264 stream failed, fallback to polling', e);
+        this.streamMode = false;
+      }
+    }
+
+    if (!this.streamMode) {
+      this.startMirrorLoop();
+    }
   },
 
-  stopMirror() {
+  syncCanvasStream() {
+    const canvas = document.getElementById('mi-canvas');
+    const wrap = document.getElementById('mi-screen');
+    if (!this.imgNaturalWidth || !wrap) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const aspect = this.imgNaturalWidth / this.imgNaturalHeight;
+    const containerAspect = wrapRect.width / wrapRect.height;
+    let dw, dh;
+    if (aspect > containerAspect) {
+      dw = wrapRect.width;
+      dh = wrapRect.width / aspect;
+    } else {
+      dh = wrapRect.height;
+      dw = wrapRect.height * aspect;
+    }
+    canvas.style.width = dw + 'px';
+    canvas.style.height = dh + 'px';
+    canvas.style.left = ((wrapRect.width - dw) / 2) + 'px';
+    canvas.style.top = ((wrapRect.height - dh) / 2) + 'px';
+  },
+
+  async stopMirror() {
     this.mirroring = false;
+    if (this.streamMode && window.H264Player) {
+      await window.H264Player.stop();
+      this.streamMode = false;
+      const canvas = document.getElementById('mi-canvas');
+      canvas.classList.remove('stream-active');
+    }
     this.stopMirrorLoop();
     const btn = document.getElementById('mirror-toggle');
     btn.textContent = '미러링 시작';
@@ -233,8 +319,14 @@ const MirrorInspector = {
     img.src = '';
     img.classList.remove('visible');
     const canvas = document.getElementById('mi-canvas');
+    canvas.classList.remove('stream-active');
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const overlay = document.getElementById('mi-overlay');
+    if (overlay) {
+      const octx = overlay.getContext('2d');
+      octx.clearRect(0, 0, overlay.width, overlay.height);
+    }
     document.getElementById('mi-placeholder').style.display = '';
     this.selectedNode = null;
     this.nodes = [];
@@ -295,6 +387,10 @@ const MirrorInspector = {
   },
 
   getImageDisplayRect() {
+    if (this.streamMode) {
+      const canvas = document.getElementById('mi-canvas');
+      return canvas.getBoundingClientRect();
+    }
     const img = document.getElementById('mi-img');
     const imgRect = img.getBoundingClientRect();
     if (!img.naturalWidth || !img.naturalHeight) return imgRect;
@@ -324,19 +420,38 @@ const MirrorInspector = {
   },
 
   syncCanvas() {
-    const canvas = document.getElementById('mi-canvas');
     const wrap = document.getElementById('mi-screen');
     if (!this.imgNaturalWidth) return;
 
     const display = this.getImageDisplayRect();
     const wrapRect = wrap.getBoundingClientRect();
 
+    if (this.streamMode) {
+      this.syncCanvasStream();
+      const overlay = document.getElementById('mi-overlay');
+      const canvas = document.getElementById('mi-canvas');
+      overlay.width = canvas.clientWidth;
+      overlay.height = canvas.clientHeight;
+      overlay.style.width = canvas.style.width;
+      overlay.style.height = canvas.style.height;
+      overlay.style.left = canvas.style.left;
+      overlay.style.top = canvas.style.top;
+      return;
+    }
+
+    const canvas = document.getElementById('mi-canvas');
     canvas.width = Math.round(display.width);
     canvas.height = Math.round(display.height);
     canvas.style.width = display.width + 'px';
     canvas.style.height = display.height + 'px';
     canvas.style.left = Math.round(display.left - wrapRect.left) + 'px';
     canvas.style.top = Math.round(display.top - wrapRect.top) + 'px';
+  },
+
+  getOverlayCanvas() {
+    return this.streamMode
+      ? document.getElementById('mi-overlay')
+      : document.getElementById('mi-canvas');
   },
 
   // --- UI Inspector ---
@@ -474,7 +589,7 @@ const MirrorInspector = {
     this.renderTree();
     const el = document.getElementById('inspector-props');
     if (el) el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>';
-    const canvas = document.getElementById('mi-canvas');
+    const canvas = this.getOverlayCanvas();
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   },
@@ -529,11 +644,10 @@ const MirrorInspector = {
   // --- Canvas Overlay ---
 
   drawOverlays() {
-    const canvas = document.getElementById('mi-canvas');
-    const ctx = canvas.getContext('2d');
     if (!this.imgNaturalWidth) return;
-
     this.syncCanvas();
+    const canvas = this.getOverlayCanvas();
+    const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     if (!this.selectedNode || !this.selectedNode.rect) return;
@@ -574,7 +688,7 @@ const MirrorInspector = {
   },
 
   showTapFeedback(e) {
-    const canvas = document.getElementById('mi-canvas');
+    const canvas = this.getOverlayCanvas();
     const rect = canvas.getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
@@ -626,12 +740,16 @@ const MirrorInspector = {
       return;
     }
 
+    const toDev = (x, y) => ({ x: Math.round(x), y: Math.round(y) });
     if (moved) {
       const dur = Math.max(100, Math.min(Date.now() - startTime, 2000));
-      window.api.inputSwipe(App.currentDevice, startX, startY, pos.x, pos.y, dur);
+      const a = toDev(startX, startY);
+      const b = toDev(pos.x, pos.y);
+      window.api.inputSwipe(App.currentDevice, a.x, a.y, b.x, b.y, dur);
     } else {
       this.showTapFeedback(e);
-      window.api.inputTap(App.currentDevice, Math.round(startX), Math.round(startY));
+      const a = toDev(startX, startY);
+      window.api.inputTap(App.currentDevice, a.x, a.y);
     }
   },
 

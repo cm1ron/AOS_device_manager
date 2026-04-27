@@ -170,6 +170,12 @@ const App = {
   },
 
   onDeviceChanged() {
+    if (typeof MirrorInspector !== 'undefined') {
+      try { MirrorInspector.cleanupForDeviceSwitch(); } catch (e) { console.warn(e); }
+    }
+    if (typeof LogcatPanel !== 'undefined' && LogcatPanel.running) {
+      try { LogcatPanel.toggle(); } catch (e) {}
+    }
     if (typeof DevicePanel !== 'undefined') DevicePanel.refresh();
     if (typeof AppsPanel !== 'undefined') {
       AppsPanel.packages = [];

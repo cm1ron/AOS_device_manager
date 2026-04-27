@@ -240,6 +240,38 @@ function setupIpcHandlers() {
   });
   ipcMain.handle('adb:clear-logcat', (_, serial) => adb.clearLogcat(serial));
 
+  ipcMain.handle('adb:start-h264-stream', async (_, serial, opts) => {
+    try {
+      const deviceSize = await adb.getDeviceSize(serial).catch(() => null);
+      adb.startH264Stream(
+        serial,
+        opts,
+        (chunk) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('h264-chunk', chunk);
+          }
+        },
+        (meta) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('h264-meta', { ...meta, deviceSize });
+          }
+        },
+        () => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('h264-end');
+          }
+        }
+      );
+      return { success: true, deviceSize };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+  ipcMain.handle('adb:stop-h264-stream', () => {
+    adb.stopH264Stream();
+    return { success: true };
+  });
+
   ipcMain.handle('adb:list-files', (_, serial, remotePath) => adb.listFiles(serial, remotePath));
   ipcMain.handle('adb:pull-file', async (_, serial, remotePath) => {
     const result = await dialog.showSaveDialog(mainWindow, {
@@ -537,6 +569,7 @@ app.on('window-all-closed', () => {
   crashMonitor.stop();
   adb.stopLogcat();
   adb.stopScreenRecord();
+  adb.stopH264Stream();
   scrcpyMgr.stop();
   if (process.platform !== 'darwin') app.quit();
 });

@@ -474,6 +474,13 @@ body {
   left: 0;
   pointer-events: auto;
 }
+#mi-canvas.stream-active {
+  background: #000;
+}
+#mi-overlay {
+  pointer-events: none;
+  background: transparent;
+}
 .mirror-placeholder {
   color: var(--text-muted);
   font-size: 14px;

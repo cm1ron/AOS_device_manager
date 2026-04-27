@@ -45,6 +45,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('logcat-lines', (_, lines) => cb(lines));
   },
 
+  startH264Stream: (serial, opts) => ipcRenderer.invoke('adb:start-h264-stream', serial, opts),
+  stopH264Stream: () => ipcRenderer.invoke('adb:stop-h264-stream'),
+  onH264Chunk: (cb) => ipcRenderer.on('h264-chunk', (_, chunk) => cb(chunk)),
+  onH264Meta: (cb) => ipcRenderer.on('h264-meta', (_, meta) => cb(meta)),
+  onH264End: (cb) => ipcRenderer.on('h264-end', () => cb()),
+  offH264Chunk: () => ipcRenderer.removeAllListeners('h264-chunk'),
+  offH264Meta: () => ipcRenderer.removeAllListeners('h264-meta'),
+  offH264End: () => ipcRenderer.removeAllListeners('h264-end'),
+
   listFiles: (serial, p) => ipcRenderer.invoke('adb:list-files', serial, p),
   pullFile: (serial, remotePath) => ipcRenderer.invoke('adb:pull-file', serial, remotePath),
   pushFile: (serial, remotePath) => ipcRenderer.invoke('adb:push-file', serial, remotePath),
