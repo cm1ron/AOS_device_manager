@@ -29,17 +29,50 @@ const MirrorInspector = {
     document.getElementById('mirror-toggle').addEventListener('click', () => this.toggleMirror());
     document.getElementById('mirror-screenshot').addEventListener('click', () => this.singleCapture());
     document.getElementById('inspector-refresh').addEventListener('click', () => this.scanUi());
-    document.getElementById('inspector-copy-selector').addEventListener('click', () => this.copySelector());
     const canvas = document.getElementById('mi-canvas');
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     canvas.addEventListener('mousemove', (e) => this.onMouseMove(e));
     canvas.addEventListener('mouseup', (e) => this.onMouseUp(e));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+    // 화면/창 크기 변경 시 자동 재계산
+    try {
+      const wrap = document.getElementById('mi-screen');
+      if (wrap && window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+          if (this.imgNaturalWidth) {
+            this.syncCanvas();
+            if (this.selectedNode) this.drawOverlays();
+          }
+        });
+        ro.observe(wrap);
+      }
+      window.addEventListener('resize', () => {
+        if (this.imgNaturalWidth) {
+          this.syncCanvas();
+          if (this.selectedNode) this.drawOverlays();
+        }
+      });
+    } catch {}
+
     document.getElementById('pull-all-logs').addEventListener('click', () => this.pullAllBoth());
     document.getElementById('open-logs-folder').addEventListener('click', () => this.openLogsFolder());
     document.getElementById('open-screenshot-folder').addEventListener('click', () => this.openScreenshotFolder());
+    const jiraBtn = document.getElementById('jira-create-from-inspector');
+    if (jiraBtn) jiraBtn.addEventListener('click', () => this.createJiraTicket());
+    const jiraReopenBtn = document.getElementById('jira-reopen-from-inspector');
+    if (jiraReopenBtn) jiraReopenBtn.addEventListener('click', () => this.reopenJiraTicket());
     document.getElementById('extracted-log-close').addEventListener('click', () => this.closeLogViewer());
+    const copyTreeBtn = document.getElementById('inspector-tree-copy');
+    if (copyTreeBtn) copyTreeBtn.addEventListener('click', async () => {
+      if (!this.lastUiXml) return App.toast('먼저 UI 스캔을 실행해주세요', 'info');
+      try {
+        await navigator.clipboard.writeText(this.lastUiXml);
+        App.toast('UI 트리 XML 복사 완료', 'success');
+      } catch (e) {
+        App.toast('복사 실패: ' + e.message, 'error');
+      }
+    });
     document.getElementById('memo-clear').addEventListener('click', () => {
       document.getElementById('inspector-memo').value = '';
     });
@@ -93,9 +126,9 @@ const MirrorInspector = {
     this.selectedNode = null;
     this.inspectMode = false;
     const treeEl = document.getElementById('inspector-tree');
-    if (treeEl) treeEl.innerHTML = '<p style="padding:12px;color:var(--text-muted)">UI 스캔을 눌러 요소를 불러오세요</p>';
+    if (treeEl) treeEl.innerHTML = '<p class="tree-empty">UI 스캔을 눌러 요소를 불러오세요.</p>';
     const propsEl = document.getElementById('inspector-props');
-    if (propsEl) propsEl.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>';
+    if (propsEl) propsEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>';
     this.clearScreen();
     document.getElementById('mi-placeholder').textContent = '미러링 시작을 눌러주세요';
   },
@@ -153,11 +186,18 @@ const MirrorInspector = {
   startRecordTimer() {
     this.recordSeconds = 0;
     const btn = document.getElementById('record-toggle');
-    this.recordTimer = setInterval(() => {
-      this.recordSeconds++;
+    const label = btn.querySelector('.rec-label');
+    const update = () => {
       const m = Math.floor(this.recordSeconds / 60);
       const s = this.recordSeconds % 60;
-      btn.title = `녹화 중 ${m}:${s.toString().padStart(2, '0')} / 3:00`;
+      const t = `${m}:${s.toString().padStart(2, '0')}`;
+      if (label) label.textContent = t;
+      btn.title = `녹화 중 ${t} / 3:00`;
+    };
+    update();
+    this.recordTimer = setInterval(() => {
+      this.recordSeconds++;
+      update();
     }, 1000);
   },
 
@@ -167,7 +207,10 @@ const MirrorInspector = {
       this.recordTimer = null;
     }
     this.recordSeconds = 0;
-    document.getElementById('record-toggle').title = '화면 녹화';
+    const btn = document.getElementById('record-toggle');
+    const label = btn.querySelector('.rec-label');
+    if (label) label.textContent = 'REC';
+    btn.title = '화면 녹화';
   },
 
   // --- scrcpy (고성능 별도 창) ---
@@ -217,22 +260,33 @@ const MirrorInspector = {
 
   // --- 내장 미러링 (screencap) ---
 
-  toggleMirror() {
-    if (this.mirroring) {
-      this.stopMirror();
-    } else {
-      this.startMirror();
+  async toggleMirror() {
+    if (this._toggling) return;
+    this._toggling = true;
+    try {
+      if (this.mirroring) {
+        await this.stopMirror();
+      } else {
+        await this.startMirror();
+      }
+    } finally {
+      this._toggling = false;
     }
   },
 
   async startMirror() {
     if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
     await this.stopScrcpyIfRunning();
+    if (window.H264Player && window.H264Player.isRunning && window.H264Player.isRunning()) {
+      try { await window.H264Player.stop(); } catch {}
+    }
+    this._stopRotationWatcher();
+    this.streamMode = false;
     this.mirroring = true;
     this.inspectMode = false;
     this.nodes = [];
     this.selectedNode = null;
-    document.getElementById('inspector-tree').innerHTML = '<p style="padding:12px;color:var(--text-muted)">터치 모드 — UI 스캔으로 인스펙트 모드 전환</p>';
+    document.getElementById('inspector-tree').innerHTML = '<p class="tree-empty">터치 모드 — UI 스캔으로 인스펙트 모드 전환</p>';
     document.getElementById('inspector-props').innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px">요소를 선택하면 속성이 표시됩니다.</p>';
     document.getElementById('mi-canvas').style.cursor = 'pointer';
     const canvas = document.getElementById('mi-canvas');
@@ -261,9 +315,11 @@ const MirrorInspector = {
         window.H264Player.onFrame = () => {
           if (this.selectedNode) this.drawOverlays();
         };
-        const startResult = await window.H264Player.start(canvas, App.currentDevice, { bitRate: '4M' });
+        const startResult = await window.H264Player.start(canvas, App.currentDevice, { bitRate: '2M' });
         if (startResult && startResult.deviceSize) this.deviceSize = startResult.deviceSize;
         this.streamMode = true;
+        this._lastRotationSig = null;
+        this._startRotationWatcher();
         document.getElementById('mirror-status').textContent = '미러링 중 (스트림)';
       } catch (e) {
         console.warn('H264 stream failed, fallback to polling', e);
@@ -276,12 +332,86 @@ const MirrorInspector = {
     }
   },
 
+  _startRotationWatcher() {
+    this._stopRotationWatcher();
+    this._lastCanvasW = 0;
+    this._lastCanvasH = 0;
+    this._streamStartedAt = Date.now();
+    this._frameWatchTimer = setInterval(() => {
+      if (!this.streamMode) return;
+      const c = document.getElementById('mi-canvas');
+      const ov = document.getElementById('mi-overlay');
+      const canvasChanged = c && (c.width !== this._lastCanvasW || c.height !== this._lastCanvasH);
+      const overlayMismatched = c && ov && (
+        ov.style.width !== c.style.width ||
+        ov.style.height !== c.style.height ||
+        ov.style.left !== c.style.left ||
+        ov.style.top !== c.style.top
+      );
+      if (canvasChanged || overlayMismatched) {
+        if (c.width && c.height) {
+          this._lastCanvasW = c.width;
+          this._lastCanvasH = c.height;
+          this.syncCanvas();
+        }
+      }
+      const lastFrame = window.H264Player && window.H264Player._lastFrameAt;
+      const sinceStart = Date.now() - (this._streamStartedAt || 0);
+      if (!lastFrame && sinceStart > 4000) {
+        this._restartStream();
+        this._streamStartedAt = Date.now();
+        return;
+      }
+      if (lastFrame && Date.now() - lastFrame > 2500) {
+        this._restartStream();
+        this._streamStartedAt = Date.now();
+      }
+    }, 500);
+  },
+
+  _stopRotationWatcher() {
+    if (this._frameWatchTimer) { clearInterval(this._frameWatchTimer); this._frameWatchTimer = null; }
+  },
+
+  async _restartStream() {
+    if (this._restartingStream || !this.streamMode || !App.currentDevice) return;
+    this._restartingStream = true;
+    try {
+      const canvas = document.getElementById('mi-canvas');
+      await window.H264Player.stop();
+      await new Promise((r) => setTimeout(r, 300));
+      const startResult = await window.H264Player.start(canvas, App.currentDevice, { bitRate: '2M' });
+      if (startResult && startResult.deviceSize) this.deviceSize = startResult.deviceSize;
+      this._streamStartedAt = Date.now();
+    } catch (e) {
+      console.warn('restart stream failed', e);
+    }
+    this._restartingStream = false;
+  },
+
   syncCanvasStream() {
     const canvas = document.getElementById('mi-canvas');
     const wrap = document.getElementById('mi-screen');
-    if (!this.imgNaturalWidth || !wrap) return;
+    if (!wrap) return;
+    // 스트림 모드: 캔버스의 실제 프레임 크기(회전 시 즉시 변경) 기준
+    const vw = canvas.width || this.imgNaturalWidth;
+    const vh = canvas.height || this.imgNaturalHeight;
+    if (!vw || !vh) return;
+    const aspect = vw / vh;
+    // 세로(portrait) 디바이스: wrap 높이를 폭/비율로 맞춰 위/아래 빈 공간 제거
+    // 가로(landscape) 디바이스: wrap 기본 flex 레이아웃 사용
+    // 회전 시 wrap의 잔여 height/flex를 항상 리셋 후 재계산
+    wrap.style.height = '';
+    wrap.style.flex = '';
+    if (aspect < 1) {
+      const wrapW = wrap.clientWidth;
+      const parentH = wrap.parentElement ? wrap.parentElement.clientHeight : 0;
+      let h = Math.round(wrapW / aspect);
+      if (parentH && h > parentH) h = parentH;
+      wrap.style.height = h + 'px';
+      wrap.style.flex = '0 0 auto';
+    }
     const wrapRect = wrap.getBoundingClientRect();
-    const aspect = this.imgNaturalWidth / this.imgNaturalHeight;
     const containerAspect = wrapRect.width / wrapRect.height;
     let dw, dh;
     if (aspect > containerAspect) {
@@ -299,6 +429,7 @@ const MirrorInspector = {
 
   async stopMirror() {
     this.mirroring = false;
+    this._stopRotationWatcher();
     if (this.streamMode && window.H264Player) {
       await window.H264Player.stop();
       this.streamMode = false;
@@ -361,10 +492,12 @@ const MirrorInspector = {
 
   async singleCapture() {
     if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
-    document.getElementById('mi-placeholder').style.display = 'none';
     const result = await window.api.screencap(App.currentDevice);
     if (result.success) {
-      this.showImage(result.data, result.mime);
+      if (!this.streamMode) {
+        document.getElementById('mi-placeholder').style.display = 'none';
+        this.showImage(result.data, result.mime);
+      }
       const saved = await window.api.saveScreenshot(result.data);
       if (saved.success) {
         App.toast(`스크린샷 저장: ${saved.filePath.split(/[\\/]/).pop()}`, 'success');
@@ -376,14 +509,26 @@ const MirrorInspector = {
 
   showImage(base64, mime) {
     const img = document.getElementById('mi-img');
-    img.src = `data:${mime || 'image/png'};base64,${base64}`;
-    img.classList.add('visible');
-    img.onload = () => {
-      this.imgNaturalWidth = img.naturalWidth;
-      this.imgNaturalHeight = img.naturalHeight;
+    const onReady = () => {
+      const w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return;
+      // 회전(가로↔세로) 또는 해상도 변경 감지 → 캔버스/스케일 재계산
+      const changed = this.imgNaturalWidth !== w || this.imgNaturalHeight !== h;
+      this.imgNaturalWidth = w;
+      this.imgNaturalHeight = h;
       this.syncCanvas();
+      if (changed) {
+        // 다음 프레임에서 한 번 더 — layout 반영 후
+        requestAnimationFrame(() => this.syncCanvas());
+        setTimeout(() => this.syncCanvas(), 100);
+      }
       if (this.selectedNode) this.drawOverlays();
     };
+    img.onload = onReady;
+    img.src = `data:${mime || 'image/png'};base64,${base64}`;
+    img.classList.add('visible');
+    // 이미 로드된 경우 onload 가 안 불릴 수 있음
+    if (img.complete && img.naturalWidth) onReady();
   },
 
   getImageDisplayRect() {
@@ -430,18 +575,24 @@ const MirrorInspector = {
       this.syncCanvasStream();
       const overlay = document.getElementById('mi-overlay');
       const canvas = document.getElementById('mi-canvas');
-      overlay.width = canvas.clientWidth;
-      overlay.height = canvas.clientHeight;
-      overlay.style.width = canvas.style.width;
-      overlay.style.height = canvas.style.height;
-      overlay.style.left = canvas.style.left;
-      overlay.style.top = canvas.style.top;
+      const wrapR = wrap.getBoundingClientRect();
+      const cR = canvas.getBoundingClientRect();
+      const cw = cR.width;
+      const ch = cR.height;
+      const dpr = window.devicePixelRatio || 1;
+      overlay.width = Math.max(1, Math.round(cw * dpr));
+      overlay.height = Math.max(1, Math.round(ch * dpr));
+      overlay.style.width = cw + 'px';
+      overlay.style.height = ch + 'px';
+      overlay.style.left = (cR.left - wrapR.left) + 'px';
+      overlay.style.top = (cR.top - wrapR.top) + 'px';
       return;
     }
 
     const canvas = document.getElementById('mi-canvas');
-    canvas.width = Math.round(display.width);
-    canvas.height = Math.round(display.height);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(display.width * dpr);
+    canvas.height = Math.round(display.height * dpr);
     canvas.style.width = display.width + 'px';
     canvas.style.height = display.height + 'px';
     canvas.style.left = Math.round(display.left - wrapRect.left) + 'px';
@@ -474,9 +625,14 @@ const MirrorInspector = {
 
     if (result.screenshot) {
       document.getElementById('mi-placeholder').style.display = 'none';
+      // 회전 후 캐시된 imgNaturalWidth 가 남아있을 수 있어 강제 리셋
+      this.imgNaturalWidth = 0;
+      this.imgNaturalHeight = 0;
       this.showImage(result.screenshot, result.screenshotMime);
     }
 
+    this.lastUiXml = result.xml || '';
+    this.dumpDeviceSize = result.deviceSize || null;
     this.nodes = this.parseXml(result.xml);
     this.selectedNode = null;
     this.inspectMode = true;
@@ -524,6 +680,17 @@ const MirrorInspector = {
 
     const root = doc.querySelector('hierarchy') || doc.documentElement;
     for (const child of root.children) walk(child, 0, -1);
+
+    // dump 좌표계 크기 추정 (root 노드 bounds 의 최대 x2/y2)
+    let maxX = 0, maxY = 0;
+    for (const n of nodes) {
+      if (n.rect) {
+        if (n.rect.x2 > maxX) maxX = n.rect.x2;
+        if (n.rect.y2 > maxY) maxY = n.rect.y2;
+      }
+    }
+    this.dumpWidth = maxX || 0;
+    this.dumpHeight = maxY || 0;
     return nodes;
   },
 
@@ -531,7 +698,7 @@ const MirrorInspector = {
     const container = document.getElementById('inspector-tree');
     container.innerHTML = '';
     if (!this.nodes.length) {
-      container.innerHTML = '<p style="padding:12px;color:var(--text-muted)">UI 스캔을 눌러 요소를 불러오세요</p>';
+      container.innerHTML = '<p class="tree-empty">UI 스캔을 눌러 요소를 불러오세요</p>';
       return;
     }
 
@@ -652,8 +819,24 @@ const MirrorInspector = {
 
     if (!this.selectedNode || !this.selectedNode.rect) return;
 
-    const scaleX = canvas.width / this.imgNaturalWidth;
-    const scaleY = canvas.height / this.imgNaturalHeight;
+    // dump 의 root node bounds 를 좌표 기준으로 사용 (dump 가 실제 디바이스 해상도와
+    // 다른 좌표계를 쓰는 경우 — 예: 1440x3088 디바이스인데 dump 는 1080x2316 좌표 사용 — 대응)
+    let refW = this.imgNaturalWidth;
+    let refH = this.imgNaturalHeight;
+    const rootNode = this.nodes && this.nodes[0];
+    if (rootNode && rootNode.rect && rootNode.rect.x2 > 0 && rootNode.rect.y2 > 0) {
+      refW = rootNode.rect.x2;
+      refH = rootNode.rect.y2;
+    } else if (this.dumpDeviceSize) {
+      const dw = this.dumpDeviceSize.width;
+      const dh = this.dumpDeviceSize.height;
+      const imgLandscape = this.imgNaturalWidth > this.imgNaturalHeight;
+      const devLandscape = dw > dh;
+      if (imgLandscape === devLandscape) { refW = dw; refH = dh; }
+      else { refW = dh; refH = dw; }
+    }
+    const scaleX = canvas.width / refW;
+    const scaleY = canvas.height / refH;
     const r = this.selectedNode.rect;
     const x = r.x1 * scaleX;
     const y = r.y1 * scaleY;
@@ -679,11 +862,25 @@ const MirrorInspector = {
 
   canvasToDevice(e) {
     const display = this.getImageDisplayRect();
-    const x = (e.clientX - display.left) / display.width * this.imgNaturalWidth;
-    const y = (e.clientY - display.top) / display.height * this.imgNaturalHeight;
+    let refW = this.imgNaturalWidth;
+    let refH = this.imgNaturalHeight;
+    const rootNode = this.nodes && this.nodes[0];
+    if (rootNode && rootNode.rect && rootNode.rect.x2 > 0 && rootNode.rect.y2 > 0) {
+      refW = rootNode.rect.x2;
+      refH = rootNode.rect.y2;
+    } else if (this.dumpDeviceSize) {
+      const dw = this.dumpDeviceSize.width;
+      const dh = this.dumpDeviceSize.height;
+      const imgLandscape = this.imgNaturalWidth > this.imgNaturalHeight;
+      const devLandscape = dw > dh;
+      if (imgLandscape === devLandscape) { refW = dw; refH = dh; }
+      else { refW = dh; refH = dw; }
+    }
+    const x = (e.clientX - display.left) / display.width * refW;
+    const y = (e.clientY - display.top) / display.height * refH;
     return {
-      x: Math.round(Math.max(0, Math.min(x, this.imgNaturalWidth))),
-      y: Math.round(Math.max(0, Math.min(y, this.imgNaturalHeight))),
+      x: Math.round(Math.max(0, Math.min(x, refW))),
+      y: Math.round(Math.max(0, Math.min(y, refH))),
     };
   },
 
@@ -766,18 +963,8 @@ const MirrorInspector = {
     }
     if (!leaf) return;
 
-    const chain = [];
-    let p = leaf;
-    while (p) {
-      chain.push(p);
-      p = p.parentIndex >= 0 ? this.nodes[p.parentIndex] : null;
-    }
-
-    const target =
-      chain.find((n) => n.resourceId && n.clickable === 'true') ||
-      chain.find((n) => n.clickable === 'true') ||
-      chain.find((n) => n.resourceId) ||
-      leaf;
+    // 클릭한 부분 자체를 그대로 선택 (자동화 가능 부분 탐색 X)
+    const target = leaf;
 
     let q = target;
     while (q && q.parentIndex >= 0) {
@@ -862,32 +1049,103 @@ const MirrorInspector = {
     }
   },
 
-  copySelector() {
-    if (!this.selectedNode) return App.toast('요소를 먼저 선택해주세요', 'info');
-    const n = this.selectedNode;
-    let strategy, value, display;
+  // --- Jira ---
 
-    if (n.resourceId) {
-      strategy = 'id';
-      value = n.resourceId;
-      display = `[id] ${value}`;
-    } else if (n.contentDesc) {
-      strategy = 'accessibility id';
-      value = n.contentDesc;
-      display = `[desc] ${value}`;
-    } else if (n.text) {
-      strategy = 'text';
-      value = n.text;
-      display = `[text] ${value}`;
-    } else {
-      strategy = 'xpath';
-      value = this.buildXpath(n);
-      display = `[xpath] ${value}`;
+  async createJiraTicket() {
+    if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
+    if (!window.JiraTicket) return App.toast('Jira 모듈 로드 실패', 'error');
+    if (this._jiraCreating) return; // 중복 클릭 방지
+    this._jiraCreating = true;
+    const jiraBtn = document.getElementById('jira-create-from-inspector');
+    if (jiraBtn) jiraBtn.disabled = true;
+    const release = () => {
+      this._jiraCreating = false;
+      if (jiraBtn) jiraBtn.disabled = false;
+    };
+    try {
+      await this._createJiraTicketImpl();
+    } finally {
+      release();
     }
+  },
 
-    const result = `${strategy}=${value}`;
-    navigator.clipboard.writeText(result);
-    App.toast(`셀렉터 복사: ${display}`, 'success');
+  async _createJiraTicketImpl() {
+    const { deviceInfo, attachments } = await this._collectJiraPayload();
+    window.JiraTicket.showCreateModal({ deviceInfo, attachments });
+  },
+
+  async _collectJiraPayload() {
+    App.toast('디바이스 정보 / 스크린샷 수집 중...', 'info');
+    let info = null;
+    let pkg = (window.DevicePanel && DevicePanel.detectedPkg) || null;
+    try {
+      if (!pkg) {
+        const fg = await window.api.getForegroundPkg(App.currentDevice);
+        if (fg) pkg = fg;
+      }
+    } catch {}
+    try { info = pkg ? await window.api.getRunningAppInfo(App.currentDevice, pkg) : null; } catch {}
+    let model = '', osVersion = '', chipset = '';
+    try {
+      const di = await window.api.getDeviceInfo(App.currentDevice);
+      model = (di && (di.model || di.marketName)) || '';
+      osVersion = (di && (di.androidVersion || di.osVersion)) || '';
+      chipset = (di && di.chipset) || '';
+    } catch {}
+
+    const deviceInfo = {
+      serial: App.currentDevice,
+      model,
+      osVersion,
+      chipset,
+      appVersion: (info && (info.appVersion || info.versionName)) || '',
+      rnVersion: (info && info.rnVersion) || '',
+      unrealVersion: (info && info.unrealVersion) || '',
+      server: (info && info.server) || '',
+      buildType: (info && info.buildType) || (pkg && pkg.endsWith('.dev') ? 'DEV' : (pkg ? 'RELEASE' : '')),
+      foregroundPkg: pkg || '',
+    };
+
+    const attachments = [];
+    try {
+      const shot = await window.api.screencap(App.currentDevice);
+      if (shot && shot.success && shot.data) {
+        const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        attachments.push({ filename: `screenshot_${ts}.png`, dataBase64: shot.data });
+      }
+    } catch {}
+
+    try {
+      if (pkg) {
+        const logPaths = (typeof getLogPaths === 'function') ? getLogPaths(pkg) : null;
+        if (logPaths) {
+          const result = await window.api.pullAllLogs(App.currentDevice, [logPaths.app, logPaths.meta], { withScreenshot: false });
+          if (result && result.success && Array.isArray(result.files)) {
+            for (const f of result.files) {
+              if (f && f.path) attachments.push({ path: f.path, filename: f.name || undefined });
+            }
+          }
+        }
+      }
+    } catch (e) { console.warn('[jira] pullAllLogs failed', e); }
+
+    return { deviceInfo, attachments };
+  },
+
+  async reopenJiraTicket() {
+    if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
+    if (!window.JiraTicket) return App.toast('Jira 모듈 로드 실패', 'error');
+    if (this._jiraReopening) return;
+    this._jiraReopening = true;
+    const btn = document.getElementById('jira-reopen-from-inspector');
+    if (btn) btn.disabled = true;
+    try {
+      const { deviceInfo, attachments } = await this._collectJiraPayload();
+      window.JiraTicket.showReopenModal({ deviceInfo, attachments });
+    } finally {
+      this._jiraReopening = false;
+      if (btn) btn.disabled = false;
+    }
   },
 
   // --- Log Extract ---
@@ -905,17 +1163,18 @@ const MirrorInspector = {
     if (!pkg) pkg = 'com.overdare.overdare.dev';
     const logPaths = getLogPaths(pkg);
 
-    App.toast('앱 + 메타 로그 추출 중...', 'info');
+    App.toast('스크린샷 + 로그 추출 중...', 'info');
 
     try {
-      const result = await window.api.pullAllLogs(App.currentDevice, [logPaths.app, logPaths.meta]);
+      const result = await window.api.pullAllLogs(App.currentDevice, [logPaths.app, logPaths.meta], { withScreenshot: true });
       if (!result.success) {
-        App.toast(`로그 추출 실패: ${result.error}`, 'error');
+        App.toast(`추출 실패: ${result.error}`, 'error');
         return;
       }
 
       this.lastLogsDir = result.logsDir;
-      App.toast(`로그 ${result.count}개 파일 추출 완료`, 'success');
+      const shotMsg = result.screenshotPath ? ' + 스크린샷' : '';
+      App.toast(`로그 ${result.count}개${shotMsg} 추출 완료`, 'success');
       await window.api.openFolder(result.logsDir);
     } catch (e) {
       App.toast(`로그 추출 오류: ${e.message}`, 'error');
@@ -936,14 +1195,11 @@ const MirrorInspector = {
   },
 
   async openLogsFolder() {
-    if (this.lastLogsDir) {
-      try {
-        await window.api.openFolder(this.lastLogsDir);
-      } catch (e) {
-        App.toast(`폴더 열기 실패: ${e.message}`, 'error');
-      }
-    } else {
-      App.toast('먼저 로그를 추출해주세요', 'info');
+    try {
+      const r = await window.api.openLogsTodayFolder();
+      if (!r || !r.success) App.toast(`폴더 열기 실패: ${(r && r.error) || ''}`, 'error');
+    } catch (e) {
+      App.toast(`폴더 열기 실패: ${e.message}`, 'error');
     }
   },
 

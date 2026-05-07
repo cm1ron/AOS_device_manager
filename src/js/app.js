@@ -9,6 +9,8 @@ const App = {
     this.setupDeviceSelector();
     this.setupWireless();
     this.setupRenameModal();
+    this.setupWebviewReload();
+    this.setupMouseNavButtons();
     this.loadDevices();
 
     if (window.api.onWirelessAutoReconnect) {
@@ -25,9 +27,10 @@ const App = {
   setupTheme() {
     const saved = localStorage.getItem('app-theme') || 'dark';
     this.applyTheme(saved);
-    const btn = document.getElementById('theme-toggle-btn');
+    const btn = document.getElementById('settings-theme-toggle');
     if (btn) {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const next = (document.documentElement.getAttribute('data-theme') === 'light') ? 'dark' : 'light';
         this.applyTheme(next);
         localStorage.setItem('app-theme', next);
@@ -44,6 +47,8 @@ const App = {
       if (theme === 'light') { dark.style.display = 'none'; light.style.display = ''; }
       else { dark.style.display = ''; light.style.display = 'none'; }
     }
+    const label = document.getElementById('settings-theme-label');
+    if (label) label.textContent = (theme === 'light') ? '라이트 모드' : '다크 모드';
   },
 
   setupNav() {
@@ -52,17 +57,183 @@ const App = {
         this.switchPanel(btn.dataset.panel);
       });
     });
+
+    // 폴더 → 어느 패널이 그 폴더 안에 들어있는지 매핑
+    this._folderMap = {};   // panelName -> folderId
+    document.querySelectorAll('.nav-popover').forEach((pop) => {
+      const folderId = pop.id.replace(/^nav-popover-/, '');
+      pop.querySelectorAll('.nav-popover-item[data-panel]').forEach((it) => {
+        this._folderMap[it.dataset.panel] = folderId;
+        it.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._handleNavTarget(it.dataset.panel);
+          this._closeAllNavPopovers();
+        });
+      });
+    });
+
+    // 폴더 버튼 클릭 → 팝오버 토글
+    document.querySelectorAll('.nav-folder').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._toggleNavPopover(btn);
+      });
+    });
+
+    document.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.nav-popover') || e.target.closest('.nav-folder')) return;
+      this._closeAllNavPopovers();
+    }, true);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this._closeAllNavPopovers();
+    });
+    window.addEventListener('resize', () => this._closeAllNavPopovers());
+    // webview 클릭 시에는 host renderer 로 mousedown 이 전파되지 않아 popover가 안 닫힘 → blur 로 보강
+    window.addEventListener('blur', () => this._closeAllNavPopovers());
+    const closePopoversOnWebviewClick = () => {
+      document.querySelectorAll('webview').forEach((wv) => {
+        try {
+          wv.addEventListener('focus', () => this._closeAllNavPopovers());
+          // pointerdown 이 webview 컨테이너로 잡히는 경우도 있음
+          wv.addEventListener('pointerdown', () => this._closeAllNavPopovers(), true);
+        } catch {}
+      });
+    };
+    closePopoversOnWebviewClick();
+    // 동적으로 추가되는 webview 도 잡기
+    setTimeout(closePopoversOnWebviewClick, 1000);
+    setTimeout(closePopoversOnWebviewClick, 3000);
+  },
+
+  _toggleNavPopover(btn) {
+    const folderId = btn.dataset.folder;
+    const pop = document.getElementById(`nav-popover-${folderId}`);
+    if (!pop) return;
+    const wasOpen = pop.classList.contains('open');
+    this._closeAllNavPopovers();
+    if (wasOpen) return;
+    const r = btn.getBoundingClientRect();
+    pop.style.left = (r.right + 10) + 'px';
+    pop.style.top = (r.top - 4) + 'px';
+    pop.classList.add('open');
+    requestAnimationFrame(() => {
+      const pr = pop.getBoundingClientRect();
+      const vh = window.innerHeight;
+      const margin = 8;
+      if (pr.bottom > vh - margin) {
+        const newTop = Math.max(margin, vh - margin - pr.height);
+        pop.style.top = newTop + 'px';
+      }
+    });
+    btn.classList.add('popover-open');
+    document.querySelectorAll('.nav-btn.active').forEach((b) => {
+      if (b !== btn) b.classList.remove('active');
+    });
+  },
+
+  _closeAllNavPopovers() {
+    document.querySelectorAll('.nav-popover.open').forEach(p => p.classList.remove('open'));
+    document.querySelectorAll('.nav-folder.popover-open').forEach(b => b.classList.remove('popover-open'));
+  },
+
+  // 팝오버 항목 클릭 시 — 일반 패널이면 switchPanel, 사이트 환경이면 SiteTabs.open + 해당 패널 전환
+  _handleNavTarget(target) {
+    const m = /^(hub|hiker)-(dev|staging|live)$/.exec(target);
+    if (m && window.SiteTabs) {
+      const [, site, kind] = m;
+      window.SiteTabs.open(site, kind, kind === 'dev' ? 'qa' : null);
+    }
+    // panel-hub-dev / panel-hub-staging / ... 로 패널 전환 (target 그대로)
+    this.switchPanel(target);
+  },
+
+  // F5 / Ctrl+R 은 webview 내부 포커스 시에만 동작 (main.js 의 web-contents-created 훅).
+  // 일반 패널에서는 의도적으로 동작하지 않음.
+  setupWebviewReload() {
+    window.attachWebviewReloadShortcut = () => {};
+  },
+
+  setupMouseNavButtons() {
+    const findActiveWebview = () => {
+      const panel = document.querySelector('.panel.active');
+      if (!panel) return null;
+      const wvs = panel.querySelectorAll('webview');
+      for (const wv of wvs) {
+        const r = wv.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) return wv;
+      }
+      return null;
+    };
+    const wvCanGo = (wv, dir) => {
+      try {
+        if (wv.navigationHistory) {
+          return dir === 'back' ? wv.navigationHistory.canGoBack() : wv.navigationHistory.canGoForward();
+        }
+        return dir === 'back' ? wv.canGoBack() : wv.canGoForward();
+      } catch { return false; }
+    };
+    const wvGo = (wv, dir) => {
+      try {
+        if (wv.navigationHistory) {
+          if (dir === 'back') wv.navigationHistory.goBack(); else wv.navigationHistory.goForward();
+        } else {
+          if (dir === 'back') wv.goBack(); else wv.goForward();
+        }
+      } catch {}
+    };
+    if (window.api && window.api.onMouseNav) {
+      window.api.onMouseNav((dir) => {
+        const wv = findActiveWebview();
+        if (wv && wvCanGo(wv, dir)) { wvGo(wv, dir); return; }
+        try {
+          if (window.PanelNav) {
+            if (dir === 'back') PanelNav.back();
+            else if (dir === 'forward') PanelNav.forward();
+          }
+        } catch {}
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (!e.altKey) return;
+      if (e.key === 'ArrowLeft') {
+        const wv = findActiveWebview();
+        if (wv && wvCanGo(wv, 'back')) wvGo(wv, 'back');
+        else if (window.PanelNav) PanelNav.back();
+        e.preventDefault();
+      } else if (e.key === 'ArrowRight') {
+        const wv = findActiveWebview();
+        if (wv && wvCanGo(wv, 'forward')) wvGo(wv, 'forward');
+        else if (window.PanelNav) PanelNav.forward();
+        e.preventDefault();
+      }
+    });
   },
 
   switchPanel(name) {
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
-    document.querySelector(`.nav-btn[data-panel="${name}"]`).classList.add('active');
+    const directBtn = document.querySelector(`.nav-btn[data-panel="${name}"]`);
+    if (directBtn) {
+      directBtn.classList.add('active');
+    } else if (this._folderMap && this._folderMap[name]) {
+      // 폴더 안의 항목이면 폴더 버튼을 active 표시
+      const folderBtn = document.querySelector(`.nav-folder[data-folder="${this._folderMap[name]}"]`);
+      if (folderBtn) folderBtn.classList.add('active');
+    }
+    // 팝오버 안의 항목 active 표시
+    document.querySelectorAll('.nav-popover-item').forEach(i => i.classList.remove('active'));
+    const popItem = document.querySelector(`.nav-popover-item[data-panel="${name}"]`);
+    if (popItem) popItem.classList.add('active');
+
     document.querySelectorAll('.panel').forEach((p) => p.classList.remove('active'));
-    document.getElementById(`panel-${name}`).classList.add('active');
+    const panel = document.getElementById(`panel-${name}`);
+    if (panel) panel.classList.add('active');
     this.currentPanel = name;
 
     if (name === 'apps' && this.currentDevice && typeof AppsPanel !== 'undefined' && !AppsPanel.packages.length) {
       AppsPanel.loadPackages();
+    }
+    if (name === 'bvt' && window.BvtPanel) {
+      BvtPanel.init().then(() => BvtPanel.refreshDevices());
     }
   },
 
@@ -137,6 +308,8 @@ const App = {
   },
 
   updateDeviceList(devices) {
+    this.devices = devices;
+    if (window.BvtPanel && BvtPanel.initialized) BvtPanel.refreshDevices();
     const sel = document.getElementById('device-selector');
     const dot = document.getElementById('status-dot');
     const prev = sel.value;
@@ -160,6 +333,18 @@ const App = {
       sel.appendChild(opt);
     });
 
+    // 무선 연결된 디바이스(IP:포트 패턴)가 있으면 끊기 버튼 자동 표시
+    const wireless = unique.find((d) => /^\d+\.\d+\.\d+\.\d+:\d+$/.test(d.serial));
+    const disBtn = document.getElementById('wireless-disconnect-btn');
+    if (disBtn) {
+      if (wireless) {
+        this.wirelessAddress = wireless.serial;
+        disBtn.style.display = '';
+      } else {
+        disBtn.style.display = 'none';
+      }
+    }
+
     if (prev && unique.find((d) => d.serial === prev)) {
       sel.value = prev;
     } else if (unique.length) {
@@ -169,9 +354,9 @@ const App = {
     this.onDeviceChanged();
   },
 
-  onDeviceChanged() {
+  async onDeviceChanged() {
     if (typeof MirrorInspector !== 'undefined') {
-      try { MirrorInspector.cleanupForDeviceSwitch(); } catch (e) { console.warn(e); }
+      try { await MirrorInspector.cleanupForDeviceSwitch(); } catch (e) { console.warn(e); }
     }
     if (typeof LogcatPanel !== 'undefined' && LogcatPanel.running) {
       try { LogcatPanel.toggle(); } catch (e) {}

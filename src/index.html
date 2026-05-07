@@ -3,39 +3,125 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: http: https:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http: https:; connect-src 'self' http: https:;">
-  <title>Android Device Manager</title>
+  <title>QA Manager</title>
   <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
   <nav id="sidebar">
-    <button class="nav-btn active nav-emoji" data-panel="device" title="디바이스 정보">
-      <span class="nav-icon">📱</span><span class="nav-label">Device</span>
+    <button class="nav-btn active nav-emoji nav-img-btn" data-panel="device" title="디바이스 정보">
+      <span class="nav-icon"><img class="nav-img" src="../assets/icon-device.png" alt="Device"></span><span class="nav-label">Device</span>
     </button>
-    <button class="nav-btn nav-emoji" data-panel="mirror" title="모니터링">
-      <span class="nav-icon">🖥️</span><span class="nav-label">모니터링</span>
-    </button>
-    <button class="nav-btn nav-emoji" data-panel="logcat" title="Logcat" style="position:relative">
-      <span class="nav-icon">🐱</span><span class="nav-label">Logcat</span>
+    <button class="nav-btn nav-emoji nav-folder nav-img-btn" data-folder="monitor" title="모니터링 도구">
+      <span class="nav-icon"><img class="nav-img" src="../assets/icon-monitor.png" alt="모니터링"></span><span class="nav-label">모니터링</span>
+      <span class="nav-folder-caret">▸</span>
       <span class="nav-crash-badge" id="nav-crash-badge" style="display:none">0</span>
     </button>
-    <button class="nav-btn nav-emoji" data-panel="analysis" title="TC 생성">
-      <span class="nav-icon">📝</span><span class="nav-label">TC Generator</span>
+    <button class="nav-btn nav-emoji nav-folder nav-img-btn" data-folder="auto" title="자동화 도구">
+      <span class="nav-icon"><img class="nav-img nav-img-sm" src="../assets/icon-auto.png" alt="자동화"></span><span class="nav-label">자동화</span>
+      <span class="nav-folder-caret">▸</span>
     </button>
-    <button class="nav-btn nav-emoji" data-panel="orca" title="Orca (TC 등록)">
-      <span class="nav-icon">🐳</span><span class="nav-label">Orca</span>
+    <button class="nav-btn nav-emoji nav-folder nav-img-btn" data-folder="issue" title="Jira / Confluence">
+      <span class="nav-icon"><img class="nav-img nav-img-sm" src="../assets/icon-jira.png" alt="Jira/Confluence"></span><span class="nav-label">Jira/Confluence</span>
+      <span class="nav-folder-caret">▸</span>
     </button>
-    <button class="nav-btn nav-emoji" data-panel="apps" title="앱 관리">
-      <span class="nav-icon">📦</span><span class="nav-label">App Manager</span>
+    <button class="nav-btn nav-emoji nav-folder nav-img-btn nav-img-btn-tighter" data-folder="hub" title="Hub 사이트">
+      <span class="nav-icon"><img class="nav-img" src="../assets/icon-hub.png" alt="Hub"></span><span class="nav-label">Hub</span>
+      <span class="nav-folder-caret">▸</span>
+    </button>
+    <button class="nav-btn nav-emoji nav-folder nav-img-btn nav-img-btn-tighter" data-folder="hiker" title="Hiker 사이트">
+      <span class="nav-icon"><img class="nav-img nav-img-light-on-dark" src="../assets/icon-hiker.png" alt="Hiker"></span><span class="nav-label">Hiker</span>
+      <span class="nav-folder-caret">▸</span>
+    </button>
+    <button class="nav-btn nav-emoji nav-img-btn" data-panel="sable" title="Sable">
+      <span class="nav-icon"><img class="nav-img nav-img-light-on-dark" src="../assets/icon-sable.png" alt="Sable"></span><span class="nav-label">Sable</span>
+    </button>
+    <button class="nav-btn nav-emoji" data-panel="woodman" title="Woodman">
+      <span class="nav-icon">🌲</span><span class="nav-label">Woodman</span>
     </button>
     <div style="flex:1"></div>
-    <button class="nav-btn nav-emoji" id="theme-toggle-btn" title="다크/라이트 모드 전환" type="button">
-      <span class="nav-icon"><span id="theme-icon-dark">🌙</span><span id="theme-icon-light" style="display:none">☀️</span></span>
-      <span class="nav-label">Theme</span>
+    <button class="nav-btn nav-emoji" data-panel="terminal" title="콘솔 / 터미널">
+      <span class="nav-icon"><span class="nav-term-icon">&gt;_</span></span><span class="nav-label">Terminal</span>
     </button>
-    <button class="nav-btn nav-emoji" data-panel="notice" title="TODO">
-      <span class="nav-icon">📌</span><span class="nav-label">TODO</span>
+    <button class="nav-btn nav-emoji" data-panel="github" title="GitHub">
+      <span class="nav-icon"><img class="nav-img nav-img-dark-on-light nav-img-sm" src="../assets/icon-github.png" alt="GitHub"></span><span class="nav-label">GitHub</span>
+    </button>
+    <button class="nav-btn nav-emoji nav-folder" data-folder="settings" title="설정">
+      <span class="nav-icon">⚙️</span><span class="nav-label">설정</span>
+      <span class="nav-folder-caret">▸</span>
     </button>
   </nav>
+
+  <!-- Nav 폴더 팝오버 -->
+  <div class="nav-popover" id="nav-popover-monitor">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">모니터링</div>
+    <div class="nav-popover-item" data-panel="mirror">
+      <span class="nav-popover-icon">🔎</span>
+      <span class="nav-popover-label">Inspector</span>
+    </div>
+    <div class="nav-popover-item" data-panel="logcat">
+      <span class="nav-popover-icon">🐱</span>
+      <span class="nav-popover-label">Logcat</span>
+      <span class="nav-popover-badge" id="popover-crash-badge" style="display:none">0</span>
+    </div>
+    <div class="nav-popover-item" data-panel="apps">
+      <span class="nav-popover-icon">📦</span>
+      <span class="nav-popover-label">App Manager</span>
+    </div>
+  </div>
+
+  <div class="nav-popover" id="nav-popover-auto">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">자동화</div>
+    <div class="nav-popover-item" data-panel="bvt">
+      <span class="nav-popover-icon">🧪</span>
+      <span class="nav-popover-label">자동화 테스트</span>
+    </div>
+    <div class="nav-popover-item" data-panel="analysis">
+      <span class="nav-popover-icon">✨</span>
+      <span class="nav-popover-label">TC Generator</span>
+    </div>
+    <div class="nav-popover-item" data-panel="orca">
+      <span class="nav-popover-icon">🐳</span>
+      <span class="nav-popover-label">Orca</span>
+    </div>
+  </div>
+
+  <div class="nav-popover" id="nav-popover-hub">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">Hub</div>
+    <div class="nav-popover-item" data-panel="hub-dev"><span class="nav-popover-icon"><img src="../assets/icon-hub.png" alt=""></span><span class="nav-popover-label">dev</span></div>
+    <div class="nav-popover-item" data-panel="hub-staging"><span class="nav-popover-icon"><img src="../assets/icon-hub.png" alt=""></span><span class="nav-popover-label">release-qa</span></div>
+    <div class="nav-popover-item" data-panel="hub-live"><span class="nav-popover-icon"><img src="../assets/icon-hub.png" alt=""></span><span class="nav-popover-label">live</span></div>
+  </div>
+
+  <div class="nav-popover" id="nav-popover-issue">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">Jira / Confluence</div>
+    <div class="nav-popover-item" data-panel="jira"><span class="nav-popover-icon"><img src="../assets/icon-jira.png" alt=""></span><span class="nav-popover-label">Jira</span></div>
+    <div class="nav-popover-item" data-panel="confluence"><span class="nav-popover-icon"><img src="../assets/icon-confluence.png" alt=""></span><span class="nav-popover-label">Confluence</span></div>
+  </div>
+
+  <div class="nav-popover" id="nav-popover-hiker">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">Hiker</div>
+    <div class="nav-popover-item" data-panel="hiker-dev"><span class="nav-popover-icon"><img class="pop-img-light-on-dark" src="../assets/icon-hiker.png" alt=""></span><span class="nav-popover-label">dev</span></div>
+    <div class="nav-popover-item" data-panel="hiker-staging"><span class="nav-popover-icon"><img class="pop-img-light-on-dark" src="../assets/icon-hiker.png" alt=""></span><span class="nav-popover-label">release-qa</span></div>
+    <div class="nav-popover-item" data-panel="hiker-live"><span class="nav-popover-icon"><img class="pop-img-light-on-dark" src="../assets/icon-hiker.png" alt=""></span><span class="nav-popover-label">live</span></div>
+  </div>
+
+  <div class="nav-popover" id="nav-popover-settings">
+    <div class="nav-popover-arrow"></div>
+    <div class="nav-popover-title">설정</div>
+    <div class="nav-popover-item" id="settings-theme-toggle">
+      <span class="nav-popover-icon"><span id="theme-icon-dark">🌙</span><span id="theme-icon-light" style="display:none">☀️</span></span>
+      <span class="nav-popover-label" id="settings-theme-label">다크 모드</span>
+    </div>
+    <div class="nav-popover-item" data-panel="notice">
+      <span class="nav-popover-icon">📌</span>
+      <span class="nav-popover-label">Notification</span>
+    </div>
+  </div>
 
   <div id="main-content">
     <div id="toolbar">
@@ -114,35 +200,6 @@
             <p style="color:var(--text-muted)">디바이스를 선택하면 정보가 표시됩니다.</p>
           </div>
           <div class="device-visual-side" id="device-visual">
-          </div>
-        </div>
-        <div class="device-guides">
-          <div class="guide-card">
-            <div class="guide-card-title">📡 무선 연결 방법</div>
-            <div class="guide-card-body">
-              <p><strong>⭐ 권장: 5555 포트 고정 (1회 세팅)</strong></p>
-              <ol>
-                <li>USB로 디바이스 연결 (또는 무선이 이미 연결된 상태)</li>
-                <li>상단 <b>무선 연결</b> → <b>📌 5555 포트로 고정</b> 클릭</li>
-                <li>이후 앱을 켤 때마다 <b>자동 재연결</b>됨 (VPN/네트워크가 바뀌어도 OK)</li>
-              </ol>
-              <p style="margin-top:8px;color:var(--text-muted);font-size:11px">
-                💡 폰을 재부팅하면 무선 디버깅 포트가 초기화되므로 USB로 한 번 다시 연결해 5555 고정을 해주세요.
-              </p>
-
-              <p style="margin-top:10px"><strong>대체: 수동 페어링 (USB 없이 첫 연결)</strong></p>
-              <ol>
-                <li>폰: 설정 → 개발자 옵션 → <b>무선 디버깅</b> ON</li>
-                <li>"페어링 코드로 기기 페어링" 터치 → IP:Port / 6자리 코드 표시</li>
-                <li>앱: <b>무선 연결</b> 모달에서 페어링 IP·코드 입력 → <b>페어링</b></li>
-                <li>같은 화면 하단 연결용 IP:Port 입력 → <b>연결</b></li>
-              </ol>
-
-              <p style="margin-top:10px"><strong>기억된 디바이스 자동 재연결</strong></p>
-              <p style="color:var(--text-muted);font-size:11px;margin:0">
-                한 번 연결한 무선 디바이스는 자동으로 기억되어, 앱 시작 시 백그라운드에서 재연결을 시도합니다. 무선 모달의 "기억된 무선 디바이스" 목록에서 직접 연결/제거도 가능.
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -227,14 +284,16 @@
       <div class="panel" id="panel-mirror">
         <div class="mirror-inspector-toolbar">
           <button class="btn btn-primary" id="scrcpy-toggle">scrcpy (고성능)</button>
-          <button class="btn" id="mirror-toggle">내장 미러링</button>
-          <button class="btn" id="mirror-screenshot">스크린샷</button>
+          <button class="btn btn-primary" id="mirror-toggle">미러링 시작</button>
+          <button class="btn" id="mirror-screenshot" title="스크린샷">📷</button>
           <button class="btn btn-record" id="record-toggle" title="화면 녹화"><span class="rec-dot"></span><span class="rec-label">REC</span></button>
           <div class="toolbar-divider"></div>
           <button class="btn" id="inspector-refresh">UI 스캔</button>
-          <button class="btn btn-sm btn-accent" id="inspector-copy-selector">셀렉터</button>
           <div class="toolbar-divider"></div>
           <span class="badge" id="mirror-status">중지됨</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-sm btn-primary" id="jira-create-from-inspector" title="현재 디바이스 정보 + 스크린샷/logcat 으로 Jira 티켓 생성">+ Create Jira Bug Ticket</button>
+          <button class="btn btn-sm" id="jira-reopen-from-inspector" title="기존 Jira 티켓을 Reopen (앱 정보 + 스크린샷/logcat 자동 첨부)" style="background:#c0392b;border:1px solid #a33224;color:#fff">Reopen</button>
         </div>
         <div class="mirror-inspector-layout">
           <div class="mi-screen-wrap">
@@ -245,7 +304,7 @@
               <div class="mirror-placeholder" id="mi-placeholder">미러링 시작을 눌러주세요</div>
             </div>
             <div class="mi-log-buttons">
-              <button class="btn btn-sm btn-accent" id="pull-all-logs">전체 로그 추출</button>
+              <button class="btn btn-sm btn-accent" id="pull-all-logs">전체 스크린샷/로그 추출</button>
               <button class="btn btn-sm btn-folder" id="open-logs-folder">로그 폴더</button>
               <button class="btn btn-sm btn-folder" id="open-screenshot-folder">스크린샷/녹화 폴더</button>
             </div>
@@ -254,7 +313,11 @@
             <div class="mi-upper-row">
               <div class="mi-inspect-col">
                 <div class="mi-tree-wrap">
-                  <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border)">UI 트리</div>
+                  <div class="card-title" style="padding:8px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+                    <span>UI 트리</span>
+                    <div style="flex:1"></div>
+                    <button class="btn btn-sm" id="inspector-tree-copy" title="UI 트리 XML 전체 복사">전체 복사</button>
+                  </div>
                   <div class="inspector-tree" id="inspector-tree"></div>
                 </div>
                 <div class="mi-props-wrap">
@@ -278,6 +341,7 @@
                   <div class="appinfo-row"><span class="appinfo-label">서버환경</span><span class="appinfo-value" id="app-info-server">-</span></div>
                   <div class="appinfo-row"><span class="appinfo-label">언리얼버전</span><span class="appinfo-value" id="app-info-unreal">-</span></div>
                   <div class="appinfo-row"><span class="appinfo-label">앱버전</span><span class="appinfo-value" id="app-info-appver">-</span></div>
+                  <div class="appinfo-row"><span class="appinfo-label">RN버전</span><span class="appinfo-value" id="app-info-rnver">-</span></div>
                 </div>
               </div>
               <div class="mi-memo-wrap">
@@ -325,11 +389,314 @@
         </div>
         <webview id="orca-webview" data-src="https://orca.ovdr.io/" data-partition="persist:orca" style="flex:1;width:100%;height:100%" allowpopups></webview>
       </div>
+
+      <!-- BVT 자동화 테스트 -->
+      <div class="panel" id="panel-bvt" style="padding:0">
+        <div class="bvt-header">
+          <span class="bvt-title">자동화 테스트 <span class="bvt-title-sub">(BVT)</span></span>
+          <span class="bvt-status-pill" id="bvt-status-pill">대기중</span>
+          <span id="bvt-elapsed" class="bvt-elapsed"></span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="bvt-presets" title="프리셋 관리">프리셋</button>
+          <button class="btn btn-sm" id="bvt-settings" title="경로/Python 설정">설정</button>
+          <button class="btn btn-sm btn-primary" id="bvt-run">실행</button>
+          <button class="btn btn-sm btn-danger" id="bvt-stop" style="display:none">중단</button>
+        </div>
+
+        <div class="bvt-body">
+          <div class="bvt-config">
+            <section class="bvt-card">
+              <header class="bvt-card-head">
+                <span class="bvt-card-title">디바이스</span>
+                <span class="bvt-card-sub" id="bvt-device-count"></span>
+              </header>
+              <div id="bvt-device-list" class="bvt-card-body">
+                <div class="bvt-empty">디바이스를 먼저 연결하세요</div>
+              </div>
+            </section>
+
+            <section class="bvt-card">
+              <header class="bvt-card-head">
+                <span class="bvt-card-title">테스트 시나리오</span>
+                <span class="bvt-card-sub">복수 선택 가능</span>
+                <div style="flex:1"></div>
+                <button class="bvt-icon-btn" id="bvt-refresh-tests" title="main.py 에서 다시 읽기">↻</button>
+              </header>
+              <div id="bvt-tests" class="bvt-card-body bvt-tests-body"></div>
+            </section>
+
+            <section class="bvt-card">
+              <header class="bvt-card-head">
+                <span class="bvt-card-title">옵션</span>
+              </header>
+              <div class="bvt-card-body">
+                <label class="bvt-opt"><input type="checkbox" id="bvt-opt-no-slack" checked><span>Slack 발송 비활성화 <em>(조용히 테스트)</em></span></label>
+                <label class="bvt-opt"><input type="checkbox" id="bvt-opt-no-video" checked><span>영상 녹화 OFF <em>(scrcpy 충돌 방지)</em></span></label>
+                <label class="bvt-opt"><input type="checkbox" id="bvt-opt-mirror" checked><span>실행 중 scrcpy 미러링 자동 시작</span></label>
+              </div>
+            </section>
+          </div>
+
+          <div class="bvt-console-wrap">
+            <div class="bvt-console-head">
+              <span class="bvt-card-title">실행 콘솔</span>
+              <div style="flex:1"></div>
+              <button class="btn btn-sm" id="bvt-console-copy" title="전체 복사">복사</button>
+              <button class="btn btn-sm" id="bvt-console-clear" title="콘솔 지우기">지우기</button>
+            </div>
+            <pre id="bvt-console">자동화 테스트를 시작하면 여기에 진행 상황이 표시됩니다.
+</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Woodman (embedded webview) -->
+      <div class="panel" id="panel-woodman" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600">🌲 Woodman</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="woodman-url-label">https://woodman.ovdr.io/</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="woodman-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="woodman-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="woodman-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="woodman-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <webview id="woodman-webview" data-src="https://woodman.ovdr.io/" data-partition="persist:woodman" style="flex:1;width:100%;height:100%" allowpopups></webview>
+      </div>
+
+      <!-- Sable (embedded webview) -->
+      <div class="panel" id="panel-sable" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img class="tab-img-light-on-dark" src="../assets/icon-sable.png" style="width:18px;height:18px;object-fit:contain">Sable</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="sable-url-label">https://sable.ovdr.io/deployer/farms/dev</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm" id="sable-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="sable-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="sable-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="sable-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <webview id="sable-webview" data-src="https://sable.ovdr.io/deployer/farms/dev" data-partition="persist:sable" style="flex:1;width:100%;height:100%" allowpopups></webview>
+      </div>
+
+      <!-- Jira (embedded webview) -->
+      <div class="panel" id="panel-jira" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img src="../assets/icon-jira.png" style="width:18px;height:18px;object-fit:contain">Jira</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="jira-url-label">https://overdare.atlassian.net/issues/?filter=-2</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm bookmark-toggle" data-site="jira" title="즐겨찾기">⭐</button>
+          <button class="btn btn-sm" id="jira-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="jira-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="jira-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="jira-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <div class="panel-body" style="flex:1;display:flex;min-height:0">
+          <webview id="jira-webview" data-src="https://overdare.atlassian.net/issues/?filter=-2" data-partition="persist:jira" style="flex:1;height:100%" allowpopups></webview>
+        </div>
+      </div>
+
+      <!-- Confluence (embedded webview) -->
+      <div class="panel" id="panel-confluence" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img src="../assets/icon-confluence.png" style="width:18px;height:18px;object-fit:contain">Confluence</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="confluence-url-label">https://overdare.atlassian.net/wiki/spaces/NFTMetaverse/pages/32012044/00.+QA</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm bookmark-toggle" data-site="confluence" title="즐겨찾기">⭐</button>
+          <button class="btn btn-sm" id="confluence-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="confluence-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="confluence-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="confluence-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <div class="panel-body" style="flex:1;display:flex;min-height:0">
+          <webview id="confluence-webview" data-src="https://overdare.atlassian.net/wiki/spaces/NFTMetaverse/pages/32012044/00.+QA" data-partition="persist:confluence" style="flex:1;height:100%" allowpopups></webview>
+        </div>
+      </div>
+
+      <!-- GitHub (embedded webview) -->
+      <div class="panel" id="panel-github" style="padding:0">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
+          <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img class="tab-img-dark-on-light" src="../assets/icon-github.png" style="width:18px;height:18px;object-fit:contain">GitHub</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="github-url-label">https://github.krafton.com/sbx/qa-automation</span>
+          <div style="flex:1"></div>
+          <button class="btn btn-sm github-quicklink" data-url="https://github.krafton.com/sbx/qa-automation" title="qa-automation">qa-automation</button>
+          <button class="btn btn-sm github-quicklink" data-url="https://github.krafton.com/sbx/oshpaz/actions/workflows/build_world_dev.yaml" title="cooking_world_dev">cooking_world_dev</button>
+          <button class="btn btn-sm github-quicklink" data-url="https://github.krafton.com/sbx/rel-ease/actions/workflows/2.copy-client-map.yml" title="Copy Client Map">Copy Client Map</button>
+          <div style="width:1px;height:20px;background:var(--border)"></div>
+          <button class="btn btn-sm" id="github-reload" title="새로고침">↻</button>
+          <button class="btn btn-sm" id="github-back" title="뒤로">←</button>
+          <button class="btn btn-sm" id="github-forward" title="앞으로">→</button>
+          <button class="btn btn-sm" id="github-open-external" title="브라우저로 열기">↗</button>
+        </div>
+        <webview id="github-webview" data-src="https://github.krafton.com/sbx/qa-automation" data-partition="persist:github" style="flex:1;width:100%;height:100%" allowpopups></webview>
+      </div>
+
+      <!-- Site Panels: hub-dev / hub-staging / hub-live / hiker-dev / hiker-staging / hiker-live -->
+      <div class="panel site-panel" id="panel-hub-dev" data-site="hub" data-kind="dev">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hub-dev-tab-list"></div>
+          <button class="site-tab-add" data-site="hub" data-kind="dev" title="새 dev 탭">+</button>
+        </div>
+        <div class="site-stack" id="hub-dev-stack"></div>
+      </div>
+      <div class="panel site-panel" id="panel-hub-staging" data-site="hub" data-kind="staging">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hub-staging-tab-list"></div>
+          <button class="site-tab-add" data-site="hub" data-kind="staging" title="새 release-qa 탭 (복사용)">+</button>
+        </div>
+        <div class="site-stack" id="hub-staging-stack"></div>
+      </div>
+      <div class="panel site-panel" id="panel-hub-live" data-site="hub" data-kind="live">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hub-live-tab-list"></div>
+          <button class="site-tab-add" data-site="hub" data-kind="live" title="새 live 탭 (복사용)">+</button>
+        </div>
+        <div class="site-stack" id="hub-live-stack"></div>
+      </div>
+
+      <div class="panel site-panel" id="panel-hiker-dev" data-site="hiker" data-kind="dev">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hiker-dev-tab-list"></div>
+          <button class="site-tab-add" data-site="hiker" data-kind="dev" title="새 dev 탭">+</button>
+        </div>
+        <div class="site-stack" id="hiker-dev-stack"></div>
+      </div>
+      <div class="panel site-panel" id="panel-hiker-staging" data-site="hiker" data-kind="staging">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hiker-staging-tab-list"></div>
+          <button class="site-tab-add" data-site="hiker" data-kind="staging" title="새 release-qa 탭 (복사용)">+</button>
+        </div>
+        <div class="site-stack" id="hiker-staging-stack"></div>
+      </div>
+      <div class="panel site-panel" id="panel-hiker-live" data-site="hiker" data-kind="live">
+        <div class="site-tabs">
+          <div class="site-tab-list" id="hiker-live-tab-list"></div>
+          <button class="site-tab-add" data-site="hiker" data-kind="live" title="새 live 탭 (복사용)">+</button>
+        </div>
+        <div class="site-stack" id="hiker-live-stack"></div>
+      </div>
+      <!-- Terminal Panel -->
+      <div class="panel" id="panel-terminal">
+        <div class="terminal-layout">
+          <!-- Left: File Tree Sidebar -->
+          <aside class="tree-sidebar" id="tree-sidebar">
+            <div class="tree-toolbar">
+              <span class="tree-title" id="tree-root-name" title="">EXPLORER</span>
+              <div class="tree-toolbar-actions">
+                <button class="icon-btn" id="tree-pick-folder" title="폴더 열기" aria-label="폴더 열기">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5a1 1 0 0 1 1-1h3.2l1.3 1.5h6.5a1 1 0 0 1 1 1V12a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z"/></svg>
+                </button>
+                <button class="icon-btn" id="tree-refresh" title="새로 고침" aria-label="새로 고침">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.7-3.97"/><path d="M13.5 2.5v3h-3"/></svg>
+                </button>
+                <button class="icon-btn" id="tree-toggle-hidden" title="숨김 파일 표시" aria-label="숨김 파일 표시">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>
+                </button>
+                <button class="icon-btn" id="tree-collapse-all" title="모두 접기" aria-label="모두 접기">
+                  <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5l5-3 5 3"/><path d="M3 9.5l5 3 5-3"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="tree-root-bar">
+              <span class="tree-root-path" id="tree-root-path" title="">—</span>
+            </div>
+            <div class="tree-body" id="tree-body"></div>
+
+            <!-- 트리 우클릭 메뉴 -->
+            <div class="tree-context-menu" id="tree-context-menu" style="display:none"></div>
+          </aside>
+
+          <!-- Resizer -->
+          <div class="tree-resizer" id="tree-resizer" title="드래그로 너비 조절"></div>
+
+          <!-- Right: Terminal Main -->
+          <div class="terminal-main">
+            <div class="terminal-toolbar">
+              <h2 class="panel-title" style="margin:0">터미널</h2>
+              <div style="flex:1"></div>
+              <span class="terminal-status" id="terminal-status"></span>
+              <button class="btn btn-sm" id="terminal-device-shell-btn" title="선택된 디바이스에 adb shell 새 탭" disabled>📱 디바이스 셸</button>
+              <button class="btn btn-sm" id="terminal-clear-btn" title="화면 지우기 (Ctrl+L)">Clear</button>
+              <button class="btn btn-sm btn-danger" id="terminal-kill-btn" title="현재 탭의 셸 종료 후 재시작">재시작</button>
+              <button class="btn btn-sm" id="terminal-claude-btn" title="Session Stemp">🕘 Session Stemp</button>
+            </div>
+            <div class="terminal-tabs" id="terminal-tabs">
+              <div class="terminal-tab-list" id="terminal-tab-list"></div>
+              <div class="terminal-tab-add-wrap">
+                <button class="terminal-tab-add" id="terminal-tab-add" title="새 터미널 (Ctrl+Shift+T)">+</button>
+                <button class="terminal-tab-add-caret" id="terminal-tab-add-caret" title="셸 선택">▾</button>
+                <div class="terminal-tab-menu" id="terminal-tab-menu" style="display:none"></div>
+              </div>
+            </div>
+            <div class="terminal-cwd-bar">
+              <span class="terminal-cwd-icon">📂</span>
+              <span class="terminal-cwd-path" id="terminal-cwd-path" title="현재 작업 디렉토리">—</span>
+              <button class="btn btn-sm" id="terminal-open-folder-btn" title="OS 탐색기에서 열기">탐색기</button>
+            </div>
+            <div class="terminal-stack" id="terminal-stack">
+              <div class="terminal-search" id="terminal-search" style="display:none">
+                <input type="text" id="terminal-search-input" placeholder="검색…" />
+                <span class="terminal-search-count" id="terminal-search-count"></span>
+                <button class="btn btn-sm" id="terminal-search-prev" title="이전 (Shift+Enter)">▲</button>
+                <button class="btn btn-sm" id="terminal-search-next" title="다음 (Enter)">▼</button>
+                <button class="btn btn-sm" id="terminal-search-close" title="닫기 (Esc)">✕</button>
+              </div>
+            </div>
+
+            <!-- 터미널 우클릭 메뉴 -->
+            <div class="terminal-context-menu" id="terminal-context-menu" style="display:none">
+              <div class="menu-item" data-action="copy">복사 <span class="menu-sub">Ctrl+Shift+C</span></div>
+              <div class="menu-item" data-action="paste">붙여넣기 <span class="menu-sub">Ctrl+Shift+V</span></div>
+              <div class="menu-divider"></div>
+              <div class="menu-item" data-action="select-all">전체 선택</div>
+              <div class="menu-item" data-action="search">검색 <span class="menu-sub">Ctrl+F</span></div>
+              <div class="menu-divider"></div>
+              <div class="menu-item" data-action="clear">화면 지우기 <span class="menu-sub">Ctrl+L</span></div>
+            </div>
+          </div>
+
+          <!-- Right: Claude Sessions Drawer -->
+          <aside class="claude-drawer" id="claude-drawer" style="display:flex">
+            <div class="claude-drawer-header">
+              <span>🕘 Session Stemp</span>
+              <div style="flex:1"></div>
+              <button class="icon-btn" id="claude-drawer-refresh" title="새로 고침">↻</button>
+              <button class="icon-btn" id="claude-drawer-close" title="닫기">✕</button>
+            </div>
+            <div class="claude-drawer-body" id="claude-drawer-body">
+              <div class="claude-loading">불러오는 중…</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
       <!-- Notice Panel -->
       <div class="panel" id="panel-notice">
-        <h2 class="panel-title">TODO</h2>
+        <h2 class="panel-title">Notification</h2>
         <div class="notice-content">
           <div class="notice-section">
+            <h3 class="notice-section-title">📡 무선 연결 방법</h3>
+            <div class="notice-list">
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <p style="margin:0;font-weight:600">⭐ 권장: 5555 포트 고정 (1회 세팅)</p>
+                <ol style="margin:4px 0 0 16px;line-height:1.9;font-size:13px">
+                  <li>USB로 디바이스 연결 (또는 무선이 이미 연결된 상태)</li>
+                  <li>상단 <b>무선 연결</b> → <b>📌 5555 포트로 고정</b> 클릭</li>
+                  <li>이후 앱을 켤 때마다 <b>자동 재연결</b>됨 (VPN/네트워크 바뀌어도 OK)</li>
+                </ol>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">💡 폰 재부팅 시 무선 디버깅 포트 초기화 → USB로 한 번 다시 5555 고정 필요</p>
+              </div>
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <p style="margin:0;font-weight:600">대체: 수동 페어링 (USB 없이 첫 연결)</p>
+                <ol style="margin:4px 0 0 16px;line-height:1.9;font-size:13px">
+                  <li>폰: 설정 → 개발자 옵션 → <b>무선 디버깅</b> ON</li>
+                  <li>"페어링 코드로 기기 페어링" 터치 → IP:Port / 6자리 코드 표시</li>
+                  <li>앱: <b>무선 연결</b> 모달에서 페어링 IP·코드 입력 → <b>페어링</b></li>
+                  <li>같은 화면 하단 연결용 IP:Port 입력 → <b>연결</b></li>
+                </ol>
+              </div>
+            </div>
+          </div>
+          <div class="notice-section" style="margin-top:16px">
             <h3 class="notice-section-title">📋 향후 추가 예정</h3>
             <div class="notice-list">
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>Slack 크래시 알림 연동 (Webhook으로 자동 전송)</span></div>
@@ -338,6 +705,9 @@
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>원클릭 버그 리포트 (스크린샷+로그+디바이스 정보 자동 수집)</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>Monkey 자동 스트레스 테스트</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>다중 디바이스 비교 (동시 설치, 스크린샷 비교)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>QA 사이트 북마크 패널 (자주 쓰는 사이트 바로가기)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>좌측 카테고리 폴더 그룹화 (접기/펼치기)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>Jira 자동 티켓 등록 (디바이스 정보 + 스크린샷 + 로그 자동 첨부)</span></div>
             </div>
           </div>
         </div>
@@ -347,6 +717,11 @@
 
   <div class="toast-container" id="toast-container"></div>
 
+  <link rel="stylesheet" href="vendor/xterm/xterm.css">
+  <script src="vendor/xterm/xterm.js"></script>
+  <script src="vendor/xterm/xterm-addon-fit.js"></script>
+  <script src="vendor/xterm/xterm-addon-web-links.js"></script>
+  <script src="vendor/xterm/xterm-addon-search.js"></script>
   <script src="js/app.js"></script>
   <script src="panels/device.js"></script>
   <script src="panels/apps.js"></script>
@@ -355,5 +730,13 @@
   <script src="panels/h264-stream-player.js"></script>
   <script src="panels/mirror-inspector.js"></script>
   <script src="panels/tc-generator.js"></script>
+  <script src="panels/terminal.js"></script>
+  <script src="panels/claude-sessions.js"></script>
+  <script src="panels/file-tree.js"></script>
+  <script src="panels/sites.js"></script>
+  <script src="panels/webview-find.js"></script>
+  <script src="panels/bookmarks.js"></script>
+  <script src="panels/jira-ticket.js"></script>
+  <script src="panels/bvt.js"></script>
 </body>
 </html>

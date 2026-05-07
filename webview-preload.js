@@ -61,3 +61,45 @@ try {
 window.addEventListener('beforeunload', backup);
 window.addEventListener('pagehide', backup);
 setInterval(backup, 3000);
+
+// overdare 사이트의 쿠키 동의 배너 자동 자동 dismiss / 숨김.
+// 사이트가 매 세션마다 다시 띄우는 동의 배너를 사용자에게 안 보이게 함.
+function hideCookieBanners() {
+  try {
+    const host = location.hostname || '';
+    if (!/overdare\.com$|ovdr\.io$/i.test(host)) return;
+    // 텍스트로 배너를 찾아 숨기기 (DOM 구조에 의존 안 함)
+    const banners = [];
+    document.querySelectorAll('div, section, aside, footer').forEach((el) => {
+      if (el.children.length > 6 || el.offsetHeight > 400) return;
+      const t = (el.innerText || '').trim();
+      if (!t) return;
+      if (/cookie/i.test(t) && /(accept|settings|essential|consent)/i.test(t)) {
+        banners.push(el);
+      }
+    });
+    banners.forEach((b) => { try { b.style.display = 'none'; } catch (e) {} });
+  } catch (e) {}
+}
+function startBannerHider() {
+  hideCookieBanners();
+  // SPA 이동 후에도 다시 떴을 수 있으니 주기 체크 (10초간)
+  let n = 0;
+  const t = setInterval(() => {
+    hideCookieBanners();
+    if (++n > 50) clearInterval(t);
+  }, 200);
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', startBannerHider, { once: true });
+} else {
+  startBannerHider();
+}
+// URL 변경(SPA navigation) 시에도 다시 시도
+try {
+  const _push = history.pushState;
+  const _replace = history.replaceState;
+  history.pushState = function () { const r = _push.apply(this, arguments); startBannerHider(); return r; };
+  history.replaceState = function () { const r = _replace.apply(this, arguments); startBannerHider(); return r; };
+  window.addEventListener('popstate', startBannerHider);
+} catch (e) {}

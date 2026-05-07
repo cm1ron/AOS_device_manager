@@ -1,7 +1,7 @@
 {
   "name": "android-device-manager",
   "version": "1.0.0",
-  "description": "Android Device Manager - ADB/scrcpy 기반 디바이스 관리 도구",
+  "description": "QA Manager - ADB/scrcpy 기반 QA 도구",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -15,7 +15,7 @@
   "license": "MIT",
   "build": {
     "appId": "com.overdare.device-manager",
-    "productName": "Android Device Manager",
+    "productName": "QA Manager",
     "directories": {
       "output": "dist"
     },
@@ -24,7 +24,8 @@
       "preload.js",
       "webview-preload.js",
       "src/**/*",
-      "lib/**/*"
+      "lib/**/*",
+      "assets/**/*"
     ],
     "asarUnpack": [
       "webview-preload.js"
@@ -43,14 +44,14 @@
         "nsis",
         "portable"
       ],
-      "icon": "vendor/scrcpy/icon.ico",
+      "icon": "assets/qa-icon.ico",
       "sign": false,
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "vendor/scrcpy/icon.ico",
+      "installerIcon": "assets/qa-icon.ico",
       "artifactName": "AndroidDeviceManager-Setup-${version}.${ext}"
     },
     "portable": {
@@ -65,6 +66,16 @@
   },
   "devDependencies": {
     "electron": "^41.0.4",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "electron-rebuild": "^3.2.9",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-search": "^0.13.0",
+    "xterm-addon-web-links": "^0.9.0"
   }
 }

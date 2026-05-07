@@ -84,6 +84,11 @@ const LogcatPanel = {
   },
 
   async showCrashDetail(crash) {
+    if (this.crashCount > 0) {
+      this.crashCount = 0;
+      this._updateBadges();
+    }
+
     const overlay = document.getElementById('crash-detail-overlay');
     const title = document.getElementById('crash-detail-title');
     const log = document.getElementById('crash-detail-log');
@@ -110,15 +115,13 @@ const LogcatPanel = {
 
   _updateBadges() {
     const navBadge = document.getElementById('nav-crash-badge');
+    const popBadge = document.getElementById('popover-crash-badge');
     const panelBadge = document.getElementById('crash-badge');
+    const txt = String(this.crashCount);
     if (this.crashCount > 0) {
-      navBadge.textContent = this.crashCount;
-      navBadge.style.display = '';
-      panelBadge.textContent = this.crashCount;
-      panelBadge.style.display = '';
+      [navBadge, popBadge, panelBadge].forEach(b => { if (b) { b.textContent = txt; b.style.display = ''; } });
     } else {
-      navBadge.style.display = 'none';
-      panelBadge.style.display = 'none';
+      [navBadge, popBadge, panelBadge].forEach(b => { if (b) b.style.display = 'none'; });
     }
   },
 

@@ -17,6 +17,8 @@ const H264Player = {
     return typeof window.VideoDecoder === 'function';
   },
 
+  isRunning() { return !!this.active; },
+
   async start(canvas, serial, opts = {}) {
     if (!this.isSupported()) throw new Error('WebCodecs VideoDecoder not supported');
     this.stop();
@@ -28,6 +30,7 @@ const H264Player = {
     this.pendingPPS = null;
     this.configured = false;
     this.frameCount = 0;
+    this._lastFrameAt = 0;
 
     this._onChunk = (chunk) => this._feed(chunk);
     this._onEnd = () => { this.configured = false; this.pendingSPS = null; this.pendingPPS = null; };
@@ -105,8 +108,13 @@ const H264Player = {
     if (!payload.length) return;
     const type = payload[0] & 0x1f;
     if (type === 7) {
+      const prev = this.pendingSPS;
       this.pendingSPS = nalWithStartCode;
-      this._tryConfigure();
+      if (this.configured && prev && !this._buffersEqual(prev, nalWithStartCode)) {
+        this._reconfigure();
+      } else {
+        this._tryConfigure();
+      }
     } else if (type === 8) {
       this.pendingPPS = nalWithStartCode;
       this._tryConfigure();
@@ -206,6 +214,21 @@ const H264Player = {
     return new Uint8Array(out);
   },
 
+  _buffersEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  },
+
+  _reconfigure() {
+    if (this.decoder) {
+      try { this.decoder.close(); } catch {}
+      this.decoder = null;
+    }
+    this.configured = false;
+    this._tryConfigure();
+  },
+
   _tryConfigure() {
     if (this.configured || !this.pendingSPS || !this.pendingPPS) return;
     try {
@@ -266,6 +289,7 @@ const H264Player = {
   _renderFrame(frame) {
     if (!this.active) { frame.close(); return; }
     try {
+      this._lastFrameAt = Date.now();
       if (this.canvas.width !== frame.displayWidth || this.canvas.height !== frame.displayHeight) {
         this.canvas.width = frame.displayWidth;
         this.canvas.height = frame.displayHeight;

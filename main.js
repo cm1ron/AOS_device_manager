@@ -1,16 +1,23 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, webContents } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const AdbManager = require('./lib/adb-manager');
 const ScrcpyManager = require('./lib/scrcpy-manager');
 const DeviceMonitor = require('./lib/device-monitor');
 const CrashMonitor = require('./lib/crash-monitor');
+const PtyManager = require('./lib/pty-manager');
+const fileTree = require('./lib/file-tree');
+const claudeSessions = require('./lib/claude-sessions');
+const { JiraClient, buildDescriptionAdf, buildDescriptionPanelAdf } = require('./lib/jira');
+const { BvtRunner, autoDetectOrcaSlack, listScenarios } = require('./lib/bvt-runner');
 
 let mainWindow;
 let adb;
 let scrcpyMgr;
+let bvtRunner = null;
 let deviceMonitor;
 let crashMonitor;
+let ptyMgr;
 
 const BASE_DIR = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
 
@@ -99,7 +106,8 @@ function createWindow() {
     height: 900,
     minWidth: 1000,
     minHeight: 700,
-    title: 'Android Device Manager',
+    title: 'QA Manager',
+    icon: path.join(__dirname, 'assets', 'qa-icon.ico'),
     backgroundColor: '#1e1e2e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -115,12 +123,72 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools();
   }
+
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isF12 = input.key === 'F12';
+    const isCtrlShiftI = (input.control || input.meta) && input.shift && (input.key === 'I' || input.key === 'i');
+    if (isF12 || isCtrlShiftI) {
+      const wc = mainWindow.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools();
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.on('app-command', (_e, cmd) => {
+    if (cmd === 'browser-backward') {
+      try { mainWindow.webContents.send('mouse-nav', 'back'); } catch {}
+    } else if (cmd === 'browser-forward') {
+      try { mainWindow.webContents.send('mouse-nav', 'forward'); } catch {}
+    }
+  });
 }
 
 function setupIpcHandlers() {
   adb = new AdbManager();
   const fs = require('fs');
   const isWin = process.platform === 'win32';
+
+  ipcMain.handle('claude:list-sessions', async (_e, limit) => {
+    try { return { ok: true, sessions: await claudeSessions.listSessions(limit || 50) }; }
+    catch (e) { return { ok: false, error: e.message, sessions: [] }; }
+  });
+
+  ipcMain.handle('shell:open-external', async (_e, url, opts = {}) => {
+    if (!url || typeof url !== 'string') return { ok: false, error: 'invalid url' };
+    const isWindows = process.platform === 'win32';
+    const browser = (opts.browser || '').toLowerCase();
+    if (isWindows && browser) {
+      const { spawn } = require('child_process');
+      const candidates = {
+        chrome: [
+          'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+          'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+          path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        ],
+        edge: [
+          'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+          'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        ],
+        whale: [
+          path.join(process.env.LOCALAPPDATA || '', 'Naver\\Naver Whale\\Application\\whale.exe'),
+          'C:\\Program Files\\Naver\\Naver Whale\\Application\\whale.exe',
+          'C:\\Program Files (x86)\\Naver\\Naver Whale\\Application\\whale.exe',
+        ],
+      }[browser] || [];
+      for (const exe of candidates) {
+        try {
+          if (exe && fs.existsSync(exe)) {
+            spawn(exe, [url], { detached: true, stdio: 'ignore' }).unref();
+            return { ok: true, browser, exe };
+          }
+        } catch { /* try next */ }
+      }
+    }
+    try { await shell.openExternal(url); return { ok: true, browser: 'default' }; }
+    catch (e) { return { ok: false, error: e.message }; }
+  });
 
   ipcMain.handle('app:webview-preload-path', () => {
     const url = require('url');
@@ -129,6 +197,60 @@ function setupIpcHandlers() {
       : path.join(__dirname, 'webview-preload.js');
     return url.pathToFileURL(candidate).toString();
   });
+
+  ptyMgr = new PtyManager();
+  ipcMain.handle('terminal:list-shells', () => ptyMgr.isAvailable() ? ptyMgr.listShells() : []);
+  ipcMain.handle('terminal:create', (event, opts) => {
+    if (!ptyMgr.isAvailable()) {
+      return { error: '터미널 모듈(node-pty)이 로드되지 않았습니다. 앱을 재빌드해주세요.' };
+    }
+    const baseCwd = process.env.PORTABLE_EXECUTABLE_DIR
+      || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
+    return ptyMgr.create(event.sender, { cwd: baseCwd, ...(opts || {}) });
+  });
+  ipcMain.handle('terminal:adb-path', () => adb.adbPath);
+  ipcMain.handle('terminal:open-folder', (_e, folderPath) => {
+    if (!folderPath) return false;
+    try {
+      shell.openPath(folderPath);
+      return true;
+    } catch { return false; }
+  });
+
+  // 파일 트리 IPC
+  ipcMain.handle('tree:read-dir', (_e, dirPath, opts) => fileTree.readDir(dirPath, opts || {}));
+  ipcMain.handle('tree:list-editors', () => fileTree.detectEditors());
+  ipcMain.handle('tree:open-with', (_e, command, targetPath) => {
+    if (!command || !targetPath) return false;
+    try {
+      const { spawn } = require('child_process');
+      // .cmd 또는 .exe 모두 detached 로 실행
+      const child = spawn(command, [targetPath], {
+        detached: true,
+        stdio: 'ignore',
+        shell: process.platform === 'win32',
+      });
+      child.unref();
+      return true;
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+  ipcMain.handle('tree:show-in-folder', (_e, targetPath) => {
+    if (!targetPath) return false;
+    try { shell.showItemInFolder(targetPath); return true; } catch { return false; }
+  });
+  ipcMain.handle('tree:pick-folder', async () => {
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '워크스페이스 폴더 선택',
+      properties: ['openDirectory'],
+    });
+    if (r.canceled || !r.filePaths?.[0]) return null;
+    return r.filePaths[0];
+  });
+  ipcMain.on('terminal:write', (_e, id, data) => ptyMgr.write(id, data));
+  ipcMain.on('terminal:resize', (_e, id, cols, rows) => ptyMgr.resize(id, cols, rows));
+  ipcMain.on('terminal:kill', (_e, id) => ptyMgr.kill(id));
 
   const adbBin = isWin ? 'adb.exe' : 'adb';
   const scrcpyPacked = path.join(process.resourcesPath, 'scrcpy');
@@ -180,6 +302,13 @@ function setupIpcHandlers() {
 
   ipcMain.handle('adb:get-devices', () => adb.getDevices());
   ipcMain.handle('adb:get-device-info', (_, serial) => adb.getDeviceInfo(serial));
+  ipcMain.handle('adb:get-device-locales', (_, serial) => adb.getDeviceLocales(serial));
+  ipcMain.handle('adb:set-device-locale', (_, serial, locale) => {
+    const apkPath = app.isPackaged
+      ? path.join(process.resourcesPath, 'app', 'assets', 'ADBChangeLanguage.apk')
+      : path.join(__dirname, 'assets', 'ADBChangeLanguage.apk');
+    return adb.setDeviceLocale(serial, locale, fs.existsSync(apkPath) ? apkPath : null);
+  });
 
   ipcMain.handle('adb:install-apk', async (_, serial) => {
     const result = await dialog.showOpenDialog(mainWindow, {
@@ -432,32 +561,68 @@ function setupIpcHandlers() {
     return name.replace(/[<>:"/\\|?*]/g, '_');
   }
 
-  ipcMain.handle('adb:pull-all-logs', async (_, serial, remotePaths) => {
+  ipcMain.handle('adb:pull-all-logs', async (_, serial, remotePaths, opts = {}) => {
     const fs = require('fs');
 
-    const today = new Date().toISOString().slice(0, 10);
-    const logsDir = path.join(BASE_DIR, 'logs', today);
-    fs.mkdirSync(logsDir, { recursive: true });
+    const now = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+    // 시간대별 서브폴더로 그룹화
+    const sessionDir = opts.withScreenshot
+      ? path.join(BASE_DIR, 'logs', today, time)
+      : path.join(BASE_DIR, 'logs', today);
+    fs.mkdirSync(sessionDir, { recursive: true });
 
     const paths = Array.isArray(remotePaths) ? remotePaths : [remotePaths];
     let totalPulled = 0;
+    let screenshotPath = null;
+    const pulledFiles = [];
 
     try {
       for (const remotePath of paths) {
         const files = await adb.listFiles(serial, remotePath);
         const realFiles = files.filter((f) => !f.isDirectory);
         for (const f of realFiles) {
-          const localPath = path.join(logsDir, safeName(f.name));
+          const safe = safeName(f.name);
+          const localPath = path.join(sessionDir, safe);
           await adb.pullFile(serial, f.fullPath, localPath);
+          pulledFiles.push({ name: safe, path: localPath });
           totalPulled++;
         }
       }
 
-      if (!totalPulled) return { success: false, error: '로그 파일이 없습니다.' };
-      return { success: true, logsDir, count: totalPulled };
+      if (opts.withScreenshot) {
+        try {
+          const shot = await adb.screencap(serial);
+          if (shot && shot.success && shot.data) {
+            screenshotPath = path.join(sessionDir, `screenshot_${time}.png`);
+            fs.writeFileSync(screenshotPath, Buffer.from(shot.data, 'base64'));
+          }
+        } catch (e) { /* screenshot optional */ }
+      }
+
+      if (!totalPulled && !screenshotPath) return { success: false, error: '추출할 파일이 없습니다.' };
+      return { success: true, logsDir: sessionDir, count: totalPulled, screenshotPath, files: pulledFiles };
     } catch (e) {
       return { success: false, error: e.message };
     }
+  });
+
+  ipcMain.handle('logs:open-today-folder', async () => {
+    const fs = require('fs');
+    const { shell } = require('electron');
+    const now = new Date();
+    const pad = (n) => n.toString().padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const todayDir = path.join(BASE_DIR, 'logs', today);
+    const baseDir = path.join(BASE_DIR, 'logs');
+    try {
+      if (fs.existsSync(todayDir)) { shell.openPath(todayDir); return { success: true, path: todayDir }; }
+      fs.mkdirSync(baseDir, { recursive: true });
+      shell.openPath(baseDir);
+      return { success: true, path: baseDir };
+    } catch (e) { return { success: false, error: e.message }; }
   });
 
   ipcMain.handle('shell:open-folder', async (_, folderPath) => {
@@ -543,7 +708,353 @@ function setupIpcHandlers() {
 
     return { success: true };
   });
+
+  // ── Jira ──────────────────────────────────────────────────────────
+  ipcMain.handle('jira:test', async (_e, cfg) => {
+    try {
+      const client = new JiraClient(cfg);
+      const me = await client.myself();
+      return { success: true, accountId: me.accountId, displayName: me.displayName, emailAddress: me.emailAddress };
+    } catch (e) { return { success: false, error: e.message, status: e.status }; }
+  });
+
+  ipcMain.handle('jira:inspect', async (_e, cfg, issueKey) => {
+    try {
+      const client = new JiraClient(cfg);
+      const issue = await client.getIssue(issueKey);
+      const names = issue.names || {};
+      const fields = issue.fields || {};
+      const list = Object.keys(fields).map((id) => ({
+        id,
+        name: names[id] || id,
+        value: fields[id],
+      }));
+      return { success: true, fields: list };
+    } catch (e) { return { success: false, error: e.message, status: e.status, body: e.body }; }
+  });
+
+  ipcMain.handle('jira:createmeta', async (_e, cfg, projectKey, issueType) => {
+    try {
+      const client = new JiraClient(cfg);
+      const meta = await client.getCreateMeta(projectKey, issueType || 'Bug');
+      const proj = (meta.projects || [])[0];
+      const itype = proj && (proj.issuetypes || [])[0];
+      const fields = itype && itype.fields ? itype.fields : {};
+      const list = Object.keys(fields).map((id) => ({
+        id,
+        name: fields[id].name,
+        required: fields[id].required,
+        schema: fields[id].schema,
+        allowedValues: fields[id].allowedValues,
+      }));
+      return { success: true, fields: list };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('jira:components', async (_e, cfg, projectKey) => {
+    try {
+      const client = new JiraClient(cfg);
+      const list = await client.listComponents(projectKey);
+      return { success: true, items: list };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+
+  ipcMain.handle('jira:create', async (_e, cfg, payload, attachments) => {
+    try {
+      const client = new JiraClient(cfg);
+      const descPanel = payload.descriptionSections ? buildDescriptionPanelAdf(payload.descriptionSections) : undefined;
+      const issue = await client.createIssue({
+        projectKey: payload.projectKey,
+        issueType: payload.issueType,
+        summary: payload.summary,
+        descriptionPanelAdf: descPanel,
+        labels: payload.labels,
+        components: payload.components,
+        priority: payload.priority,
+        severity: payload.severity,
+        bugCategory: payload.bugCategory,
+        frequency: payload.frequency,
+      });
+      const attachResults = [];
+      for (const att of (attachments || [])) {
+        try {
+          if (att.path) {
+            const r = await client.attachFile(issue.key, att.path, att.filename);
+            attachResults.push({ name: att.filename || att.path, ok: true });
+          } else if (att.dataBase64) {
+            const buf = Buffer.from(att.dataBase64, 'base64');
+            await client.attachBuffer(issue.key, buf, att.filename);
+            attachResults.push({ name: att.filename, ok: true });
+          }
+        } catch (e) {
+          attachResults.push({ name: att.filename || att.path, ok: false, error: e.message });
+        }
+      }
+      const issueUrl = `${cfg.baseUrl.replace(/\/$/, '')}/browse/${issue.key}`;
+      return { success: true, key: issue.key, url: issueUrl, attachments: attachResults };
+    } catch (e) { return { success: false, error: e.message, status: e.status, body: e.body }; }
+  });
+
+  // 단일 이슈 리오픈: 첨부 업로드 → 댓글 (인라인 이미지 포함) 작성 → "Reopened" 트랜지션
+  ipcMain.handle('jira:reopen', async (_e, cfg, issueKey, payload, attachments) => {
+    try {
+      const client = new JiraClient(cfg);
+      // 1) 첨부 업로드
+      const uploaded = []; // { id, filename, mimeType, isImage }
+      for (const att of (attachments || [])) {
+        try {
+          let r;
+          if (att.path) {
+            r = await client.attachFile(issueKey, att.path, att.filename);
+          } else if (att.dataBase64) {
+            const buf = Buffer.from(att.dataBase64, 'base64');
+            r = await client.attachBuffer(issueKey, buf, att.filename);
+          }
+          // attachFile 응답은 배열
+          const arr = Array.isArray(r) ? r : (r ? [r] : []);
+          for (const a of arr) {
+            uploaded.push({
+              id: a.id,
+              filename: a.filename || att.filename,
+              mimeType: a.mimeType || '',
+              isImage: !!(att.inlineImage) || /^image\//i.test(a.mimeType || ''),
+            });
+          }
+        } catch (e) {
+          uploaded.push({ filename: att.filename, ok: false, error: e.message });
+        }
+      }
+
+      // 2) ADF 댓글 본문 구성: plain 텍스트 + 인라인 이미지 (mediaSingle)
+      const commentText = payload.commentText || '';
+      const adfContent = [];
+      const lines = commentText.split('\n');
+      const para = { type: 'paragraph', content: [] };
+      lines.forEach((line, i) => {
+        if (line) para.content.push({ type: 'text', text: line });
+        if (i < lines.length - 1) para.content.push({ type: 'hardBreak' });
+      });
+      if (para.content.length === 0) adfContent.push({ type: 'paragraph' });
+      else adfContent.push(para);
+
+      // ※ Jira Cloud REST API 로 만든 댓글은 mediaSingle 인라인 이미지를 거부합니다.
+      // (ATTACHMENT_VALIDATION_ERROR / INVALID_INPUT) 대신 첨부 파일명을 클릭 가능한
+      // 링크로 댓글 본문 끝에 나열. 누르면 Jira 첨부 미리보기/다운로드 페이지 열림.
+      const baseUrl = cfg.baseUrl.replace(/\/$/, '');
+      const goodUploads = uploaded.filter((u) => u && u.id);
+      if (goodUploads.length) {
+        const para = { type: 'paragraph', content: [] };
+        goodUploads.forEach((u, i) => {
+          const safeName = encodeURIComponent(u.filename || `file-${u.id}`);
+          const href = `${baseUrl}/secure/attachment/${u.id}/${safeName}`;
+          para.content.push({
+            type: 'text',
+            text: u.filename || `file-${u.id}`,
+            marks: [{ type: 'link', attrs: { href } }],
+          });
+          if (i < goodUploads.length - 1) para.content.push({ type: 'hardBreak' });
+        });
+        adfContent.push(para);
+      }
+      const bodyAdf = { type: 'doc', version: 1, content: adfContent };
+      await client.addComment(issueKey, bodyAdf);
+
+      // 3) Reopened 트랜지션 찾아서 실행
+      const tr = await client.listTransitions(issueKey);
+      const list = (tr && tr.transitions) || [];
+      const reopenTr = list.find((t) => /reopen/i.test(t.name)) || list.find((t) => /다시\s*열기|재오픈/.test(t.name));
+      if (!reopenTr) {
+        return { success: false, error: `Reopen 트랜지션을 찾을 수 없습니다. 가능한 트랜지션: ${list.map((t) => t.name).join(', ') || '(없음)'}` };
+      }
+      await client.doTransition(issueKey, reopenTr.id);
+
+      const issueUrl = `${cfg.baseUrl.replace(/\/$/, '')}/browse/${issueKey}`;
+      return { success: true, key: issueKey, url: issueUrl, transition: reopenTr.name, uploaded };
+    } catch (e) {
+      return { success: false, error: e.message, status: e.status, body: e.body };
+    }
+  });
+
+  // ===== BVT 자동화 =====
+  ipcMain.handle('bvt:detect-orca', () => autoDetectOrcaSlack());
+  ipcMain.handle('bvt:list-scenarios', (_e, orcaPath) => listScenarios(orcaPath));
+  ipcMain.handle('bvt:status', () => ({ running: !!(bvtRunner && bvtRunner.isRunning()) }));
+  ipcMain.handle('bvt:start', async (_e, opts) => {
+    try {
+      if (bvtRunner && bvtRunner.isRunning()) return { success: false, error: '이미 실행 중입니다' };
+      bvtRunner = new BvtRunner(mainWindow);
+      await bvtRunner.start(opts);
+      return { success: true };
+    } catch (e) { return { success: false, error: e.message }; }
+  });
+  ipcMain.handle('bvt:stop', () => {
+    if (bvtRunner && bvtRunner.isRunning()) { bvtRunner.stop(); return { success: true }; }
+    return { success: false, error: '실행 중이 아닙니다' };
+  });
+  ipcMain.handle('bvt:stdin', (_e, text) => {
+    if (bvtRunner && bvtRunner.isRunning()) return { success: bvtRunner.sendStdin(text) };
+    return { success: false };
+  });
 }
+
+// webview (Hub/Hiker/Woodman/TC/Orca) 안에서만 F5/Ctrl+R 로 reload.
+// 메인 윈도우 (renderer) 의 F5 는 무시 → 일반 패널에서 새로고침되지 않음.
+app.on('web-contents-created', (_e, contents) => {
+  if (contents.getType() !== 'webview') return;
+  // Jira issue 링크 (window.open / target=_blank) → 메인 윈도우로 라우팅
+  const JIRA_BROWSE_RE = /^https?:\/\/[^/]*atlassian\.net\/browse\//i;
+  try {
+    contents.setWindowOpenHandler(({ url }) => {
+      if (JIRA_BROWSE_RE.test(url || '')) {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('jira:open-issue', url, contents.id);
+          }
+        } catch {}
+        return { action: 'deny' };
+      }
+      // 그 외 외부 링크는 OS 브라우저로
+      try { shell.openExternal(url); } catch {}
+      return { action: 'deny' };
+    });
+  } catch {}
+  try {
+    contents.on('will-navigate', (event, url) => {
+      if (!JIRA_BROWSE_RE.test(url || '')) return;
+      // 현재 webview 의 시작 URL 이 atlassian.net 이면 (= jira-webview 본체) 그냥 정상 진행
+      try {
+        const cur = contents.getURL() || '';
+        if (/atlassian\.net\/(browse|jira|issues|projects)/i.test(cur)) {
+          return; // jira 패널 안에서의 이동은 막지 않음
+        }
+      } catch {}
+      // 그 외 (예: confluence) → navigation 막고 메인 윈도우에 라우팅 요청
+      try { event.preventDefault(); } catch {}
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('jira:open-issue', url, contents.id);
+        }
+      } catch {}
+    });
+  } catch {}
+  try {
+    contents.on('input-event', (_evt, input) => {
+      if (input.type !== 'mouseDown') return;
+      const isBack = input.button === 'back' || input.button === 3;
+      const isFwd = input.button === 'forward' || input.button === 4;
+      if (!isBack && !isFwd) return;
+      try {
+        const nh = contents.navigationHistory;
+        if (isBack) {
+          if (nh ? nh.canGoBack() : contents.canGoBack()) {
+            nh ? nh.goBack() : contents.goBack();
+            return;
+          }
+        } else {
+          if (nh ? nh.canGoForward() : contents.canGoForward()) {
+            nh ? nh.goForward() : contents.goForward();
+            return;
+          }
+        }
+        // webview 가 더 못 가면 메인 윈도우에 패널 history 이동 신호
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('mouse-nav', isBack ? 'back' : 'forward');
+        }
+      } catch {}
+    });
+  } catch {}
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isF5 = input.key === 'F5';
+    const isCtrlMeta = input.control || input.meta;
+    const isCtrlR = isCtrlMeta && (input.key === 'r' || input.key === 'R');
+    const isCtrlF = isCtrlMeta && (input.key === 'f' || input.key === 'F') && !input.shift;
+    const isEscape = input.key === 'Escape';
+    if (isCtrlF) {
+      event.preventDefault();
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview:find-open', contents.id);
+        }
+      } catch { /* ignore */ }
+      return;
+    }
+    if (isEscape) {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview:find-close', contents.id);
+        }
+      } catch { /* ignore */ }
+    }
+    // 줌 단축키 (Ctrl +/- /0)
+    if (isCtrlMeta && (input.key === '+' || input.key === '=' || input.key === '-' || input.key === '_' || input.key === '0')) {
+      event.preventDefault();
+      try {
+        const cur = contents.getZoomFactor() || 1;
+        let next = cur;
+        if (input.key === '0') next = 1;
+        else if (input.key === '+' || input.key === '=') next = Math.min(3, cur + 0.1);
+        else next = Math.max(0.3, cur - 0.1);
+        contents.setZoomFactor(next);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview:zoom-changed', contents.id, next);
+        }
+      } catch {}
+      return;
+    }
+    if (!isF5 && !isCtrlR) return;
+    event.preventDefault();
+    try {
+      if (input.shift) contents.reloadIgnoringCache();
+      else contents.reload();
+    } catch { /* ignore */ }
+  });
+  // 줌 변경(휠 등) 시 영구 저장 (renderer 가 webContents id 로 매핑)
+  try {
+    contents.on('zoom-changed', (_evt, dir) => {
+      try {
+        const cur = contents.getZoomFactor() || 1;
+        const next = Math.max(0.3, Math.min(3, cur + (dir === 'in' ? 0.1 : -0.1)));
+        contents.setZoomFactor(next);
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('webview:zoom-changed', contents.id, next);
+        }
+      } catch {}
+    });
+  } catch {}
+  contents.on('found-in-page', (_evt, result) => {
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('webview:find-result', { id: contents.id, result });
+      }
+    } catch { /* ignore */ }
+  });
+});
+
+ipcMain.handle('webview:find', async (_e, webContentsId, text, opts) => {
+  try {
+    const contents = webContents.fromId(webContentsId);
+    if (!contents) return { success: false, error: 'webContents not found' };
+    if (!text) { contents.stopFindInPage('clearSelection'); return { success: true }; }
+    const o = opts || { findNext: false };
+    // 새 검색어(=findNext:false): 페이지 맨 위에서부터 찾도록 selection 초기화
+    if (!o.findNext) {
+      try {
+        contents.stopFindInPage('clearSelection');
+        await contents.executeJavaScript('window.scrollTo(0,0); (window.getSelection && window.getSelection().removeAllRanges());', true).catch(() => {});
+      } catch { /* ignore */ }
+    }
+    const reqId = contents.findInPage(text, o);
+    return { success: true, requestId: reqId };
+  } catch (e) { return { success: false, error: e.message }; }
+});
+ipcMain.handle('webview:find-stop', (_e, webContentsId) => {
+  try {
+    const contents = webContents.fromId(webContentsId);
+    if (contents) contents.stopFindInPage('clearSelection');
+    return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+});
 
 app.whenReady().then(() => {
   createWindow();
@@ -571,5 +1082,6 @@ app.on('window-all-closed', () => {
   adb.stopScreenRecord();
   adb.stopH264Stream();
   scrcpyMgr.stop();
+  if (ptyMgr) ptyMgr.killAll();
   if (process.platform !== 'darwin') app.quit();
 });

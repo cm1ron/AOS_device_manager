@@ -3,6 +3,35 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   getFilePath: (file) => webUtils.getPathForFile(file),
   getWebviewPreloadPath: () => ipcRenderer.invoke('app:webview-preload-path'),
+  openExternal: (url, opts) => ipcRenderer.invoke('shell:open-external', url, opts),
+  onMouseNav: (cb) => ipcRenderer.on('mouse-nav', (_e, dir) => cb(dir)),
+  onJiraOpenIssue: (cb) => ipcRenderer.on('jira:open-issue', (_e, url, fromId) => cb(url, fromId)),
+  onWebviewZoomChanged: (cb) => ipcRenderer.on('webview:zoom-changed', (_e, id, factor) => cb(id, factor)),
+  bvt: {
+    detectOrca: () => ipcRenderer.invoke('bvt:detect-orca'),
+    listScenarios: (orcaPath) => ipcRenderer.invoke('bvt:list-scenarios', orcaPath),
+    status: () => ipcRenderer.invoke('bvt:status'),
+    start: (opts) => ipcRenderer.invoke('bvt:start', opts),
+    stop: () => ipcRenderer.invoke('bvt:stop'),
+    sendStdin: (text) => ipcRenderer.invoke('bvt:stdin', text),
+    onEvent: (cb) => ipcRenderer.on('bvt:event', (_e, ev) => cb(ev)),
+  },
+  jira: {
+    test: (cfg) => ipcRenderer.invoke('jira:test', cfg),
+    components: (cfg, projectKey) => ipcRenderer.invoke('jira:components', cfg, projectKey),
+    create: (cfg, payload, attachments) => ipcRenderer.invoke('jira:create', cfg, payload, attachments),
+    reopen: (cfg, issueKey, payload, attachments) => ipcRenderer.invoke('jira:reopen', cfg, issueKey, payload, attachments),
+    inspect: (cfg, issueKey) => ipcRenderer.invoke('jira:inspect', cfg, issueKey),
+    createMeta: (cfg, projectKey, issueType) => ipcRenderer.invoke('jira:createmeta', cfg, projectKey, issueType),
+  },
+  webview: {
+    find: (id, text, opts) => ipcRenderer.invoke('webview:find', id, text, opts),
+    stopFind: (id) => ipcRenderer.invoke('webview:find-stop', id),
+    onFindOpen: (cb) => ipcRenderer.on('webview:find-open', (_e, id) => cb(id)),
+    onFindClose: (cb) => ipcRenderer.on('webview:find-close', (_e, id) => cb(id)),
+    onFindResult: (cb) => ipcRenderer.on('webview:find-result', (_e, payload) => cb(payload)),
+  },
+  listClaudeSessions: (limit) => ipcRenderer.invoke('claude:list-sessions', limit),
   getDevices: () => ipcRenderer.invoke('adb:get-devices'),
   getWifiIp: (serial) => ipcRenderer.invoke('adb:get-wifi-ip', serial),
   pairDevice: (address, code) => ipcRenderer.invoke('adb:pair', address, code),
@@ -19,11 +48,43 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('wireless:auto-reconnect-result', (_, results) => cb(results));
   },
   getDeviceInfo: (serial) => ipcRenderer.invoke('adb:get-device-info', serial),
+  getDeviceLocales: (serial) => ipcRenderer.invoke('adb:get-device-locales', serial),
+  setDeviceLocale: (serial, locale) => ipcRenderer.invoke('adb:set-device-locale', serial, locale),
   onDevicesChanged: (cb) => {
     ipcRenderer.on('devices-changed', (_, devices) => cb(devices));
   },
   onScrcpyExited: (cb) => {
     ipcRenderer.on('scrcpy-exited', () => cb());
+  },
+
+  terminal: {
+    listShells: () => ipcRenderer.invoke('terminal:list-shells'),
+    getAdbPath: () => ipcRenderer.invoke('terminal:adb-path'),
+    openFolder: (p) => ipcRenderer.invoke('terminal:open-folder', p),
+    create: (opts) => ipcRenderer.invoke('terminal:create', opts),
+    write: (id, data) => ipcRenderer.send('terminal:write', id, data),
+    resize: (id, cols, rows) => ipcRenderer.send('terminal:resize', id, cols, rows),
+    kill: (id) => ipcRenderer.send('terminal:kill', id),
+    onData: (id, cb) => {
+      const ch = `terminal:data:${id}`;
+      const handler = (_e, data) => cb(data);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
+    },
+    onExit: (id, cb) => {
+      const ch = `terminal:exit:${id}`;
+      const handler = (_e, info) => cb(info);
+      ipcRenderer.on(ch, handler);
+      return () => ipcRenderer.removeListener(ch, handler);
+    },
+  },
+
+  tree: {
+    readDir: (p, opts) => ipcRenderer.invoke('tree:read-dir', p, opts || {}),
+    listEditors: () => ipcRenderer.invoke('tree:list-editors'),
+    openWith: (cmd, p) => ipcRenderer.invoke('tree:open-with', cmd, p),
+    showInFolder: (p) => ipcRenderer.invoke('tree:show-in-folder', p),
+    pickFolder: () => ipcRenderer.invoke('tree:pick-folder'),
   },
 
   installApk: (serial) => ipcRenderer.invoke('adb:install-apk', serial),
@@ -80,8 +141,9 @@ contextBridge.exposeInMainWorld('api', {
   saveFileDialog: (name) => ipcRenderer.invoke('dialog:save-file', name),
   writeFile: (p, content) => ipcRenderer.invoke('fs:write-file', p, content),
 
-  pullAllLogs: (serial, remotePaths) => ipcRenderer.invoke('adb:pull-all-logs', serial, remotePaths),
+  pullAllLogs: (serial, remotePaths, opts) => ipcRenderer.invoke('adb:pull-all-logs', serial, remotePaths, opts),
   openFolder: (folderPath) => ipcRenderer.invoke('shell:open-folder', folderPath),
+  openLogsTodayFolder: () => ipcRenderer.invoke('logs:open-today-folder'),
   saveScreenshot: (base64Data) => ipcRenderer.invoke('adb:save-screenshot', base64Data),
   openScreenshotFolder: () => ipcRenderer.invoke('shell:open-screenshot-folder'),
 
