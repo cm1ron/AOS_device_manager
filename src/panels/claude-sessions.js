@@ -35,6 +35,34 @@
     while ((m = RX.exec(text)) !== null) add(m[1], cwd);
   };
 
+  window.addClaudeResume = function (uuid, cwd) { add(uuid, cwd); };
+
+  function normPath(p) {
+    return (p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  }
+
+  // cwd 목록을 받아 각 cwd 의 최근 claude 세션을 자동 스탬프 저장.
+  window.autoStampClaudeSessions = async function (cwds) {
+    try {
+      if (!Array.isArray(cwds) || !cwds.length) return 0;
+      if (!window.api || !window.api.listClaudeSessions) return 0;
+      const res = await window.api.listClaudeSessions(200);
+      if (!res || !res.ok || !Array.isArray(res.sessions)) return 0;
+      const wanted = new Set(cwds.filter(Boolean).map(normPath));
+      const seenCwd = new Set();
+      let n = 0;
+      for (const s of res.sessions) {
+        const np = normPath(s.projectPath);
+        if (!wanted.has(np)) continue;
+        if (seenCwd.has(np)) continue;
+        seenCwd.add(np);
+        add(s.id, s.projectPath);
+        n++;
+      }
+      return n;
+    } catch { return 0; }
+  };
+
   function fmtTime(ms) {
     const d = new Date(ms);
     const pad = (n) => String(n).padStart(2, '0');

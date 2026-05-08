@@ -193,6 +193,36 @@
       });
     }
 
+    // 같은 사이트 도메인 (hub*.ovdr.io / hiker*.ovdr.io / *.overdare.com) 링크는 새 탭으로,
+    // 그 외는 외부 브라우저로
+    const isSameSite = (href) => {
+      try {
+        const u = new URL(href, initialUrl);
+        const host = u.hostname.toLowerCase();
+        if (site === 'hiker') return /(^|\.)ovdr\.io$/.test(host) && host.startsWith('hiker');
+        if (site === 'hub')   return /(^|\.)overdare\.com$/.test(host) || (/(^|\.)ovdr\.io$/.test(host) && host.startsWith('eterno'));
+        return false;
+      } catch { return false; }
+    };
+    wv.addEventListener('new-window', (e) => {
+      e.preventDefault();
+      const href = e.url;
+      if (!href) return;
+      if (isSameSite(href)) {
+        const newTab = { id: nextId(`${site}-${kind}`, kind === 'dev' ? tab.env : kind), env: tab.env };
+        state[`${site}-${kind}`].tabs.push(newTab);
+        _renderTab(site, kind, newTab);
+        state[`${site}-${kind}`].active = newTab.id;
+        _activate(`${site}-${kind}`, newTab.id);
+        const newInst = document.querySelector(`#${site}-${kind}-stack .site-instance[data-tab-id="${newTab.id}"]`);
+        const newWv = newInst && newInst.querySelector('webview');
+        if (newWv) setTimeout(() => { try { newWv.setAttribute('src', href); } catch {} }, 0);
+        saveSession();
+      } else {
+        try { window.api.openExternal(href); } catch {}
+      }
+    });
+
     inst.appendChild(wv);
     document.getElementById(`${key}-stack`).appendChild(inst);
     setTimeout(() => { try { wv.setAttribute('src', initialUrl); } catch { /* ignore */ } }, 0);
@@ -241,12 +271,27 @@
     const key = `${site}-${kind}`;
     const idx = state[key].tabs.findIndex(t => t.id === id);
     if (idx < 0) return;
-    if (state[key].tabs.length <= 1) return; // 마지막 탭은 닫지 않음
     const wasActive = state[key].active === id;
     document.querySelector(`#${key}-tab-list [data-tab-id="${id}"]`)?.remove();
     document.querySelector(`#${key}-stack [data-tab-id="${id}"]`)?.remove();
     state[key].tabs.splice(idx, 1);
-    if (wasActive) {
+
+    if (state[key].tabs.length === 0) {
+      // 모든 탭 닫힘 → 기본 탭 자동 복원
+      if (kind === 'dev') {
+        const defaultTab = { id: nextId(key, 'qa'), env: 'qa' };
+        state[key].tabs.push(defaultTab);
+        _renderTab(site, kind, defaultTab);
+        state[key].active = defaultTab.id;
+        _activate(key, defaultTab.id);
+      } else {
+        const defaultTab = { id: nextId(key, kind) };
+        state[key].tabs.push(defaultTab);
+        _renderTab(site, kind, defaultTab);
+        state[key].active = defaultTab.id;
+        _activate(key, defaultTab.id);
+      }
+    } else if (wasActive) {
       const next = state[key].tabs[Math.min(idx, state[key].tabs.length - 1)];
       state[key].active = next.id;
       _activate(key, next.id);

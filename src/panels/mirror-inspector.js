@@ -1078,24 +1078,25 @@ const MirrorInspector = {
     App.toast('디바이스 정보 / 스크린샷 수집 중...', 'info');
     const DP = (typeof DevicePanel !== 'undefined') ? DevicePanel : (window.DevicePanel || null);
     let info = null;
-    let pkg = (DP && DP.detectedPkg) || null;
-    let cachedInfo = (DP && DP.appInfo) || null;
+    let pkg = null;
+    try {
+      const fg = await window.api.getForegroundPkg(App.currentDevice);
+      if (fg) pkg = fg;
+    } catch {}
 
-    if ((!pkg || !cachedInfo) && DP && typeof DP.fetchAppInfo === 'function') {
-      try { await DP.fetchAppInfo(); } catch (e) { console.warn('[jira] fetchAppInfo failed', e); }
-      pkg = DP.detectedPkg || pkg;
-      cachedInfo = DP.appInfo || cachedInfo;
-    }
-    if (pkg && cachedInfo) {
+    const cachedPkg = (DP && DP.detectedPkg) || null;
+    const cachedInfo = (DP && DP.appInfo) || null;
+    if (!pkg) pkg = cachedPkg;
+
+    if (pkg && cachedInfo && pkg === cachedPkg) {
       info = cachedInfo;
     } else {
-      try {
-        if (!pkg) {
-          const fg = await window.api.getForegroundPkg(App.currentDevice);
-          if (fg) pkg = fg;
-        }
-      } catch {}
       try { info = pkg ? await window.api.getRunningAppInfo(App.currentDevice, pkg) : null; } catch {}
+      if (!pkg && DP && typeof DP.fetchAppInfo === 'function') {
+        try { await DP.fetchAppInfo(); } catch (e) { console.warn('[jira] fetchAppInfo failed', e); }
+        pkg = DP.detectedPkg || pkg;
+        info = DP.appInfo || info;
+      }
     }
     let model = '', osVersion = '', chipset = '';
     try {
@@ -1165,15 +1166,15 @@ const MirrorInspector = {
   async pullAllBoth() {
     if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
 
-    let pkg = DevicePanel.detectedPkg;
-    if (!pkg) {
-      try {
-        const fg = await window.api.getForegroundPkg(App.currentDevice);
-        if (fg && APP_PKGS_MIRROR.includes(fg)) pkg = fg;
-      } catch {}
-    }
+    let pkg = null;
+    try {
+      const fg = await window.api.getForegroundPkg(App.currentDevice);
+      if (fg) pkg = fg;
+    } catch {}
+    if (!pkg) pkg = DevicePanel.detectedPkg || null;
     if (!pkg) pkg = 'com.overdare.overdare.dev';
     const logPaths = getLogPaths(pkg);
+    App.toast(`대상 앱: ${pkg}`, 'info');
 
     App.toast('스크린샷 + 로그 추출 중...', 'info');
 

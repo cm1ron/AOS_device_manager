@@ -391,6 +391,19 @@ const TerminalPanel = {
       this.defaultShell = this.shells.find((s) => s.default) || this.shells[0] || null;
     } catch { /* keep empty */ }
     try { this.adbPath = await window.api.terminal.getAdbPath() || 'adb'; } catch { /* ignore */ }
+
+    // 앱 종료 시: 살아있는 모든 터미널 cwd 의 최근 claude 세션 자동 스탬프
+    window.addEventListener('beforeunload', () => {
+      try {
+        const cwds = this.tabs
+          .filter((t) => !t.exited)
+          .map((t) => t.cwd || t.spawnOpts?.cwd)
+          .filter(Boolean);
+        if (cwds.length && typeof window.autoStampClaudeSessions === 'function') {
+          window.autoStampClaudeSessions(cwds);
+        }
+      } catch { /* ignore */ }
+    });
   },
 
   async _refreshDeviceShellBtn() {
@@ -661,6 +674,9 @@ const TerminalPanel = {
     if (idx < 0) return;
     const wasActive = this.active === tab;
     const lastCwd = tab.cwd || tab.spawnOpts?.cwd || null;
+    if (lastCwd && typeof window.autoStampClaudeSessions === 'function') {
+      window.autoStampClaudeSessions([lastCwd]);
+    }
     tab.dispose();
     this.tabs.splice(idx, 1);
     if (this.tabs.length === 0) {

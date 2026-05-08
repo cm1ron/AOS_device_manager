@@ -421,6 +421,11 @@
     if (d.unrealVersion) lines.push(`언리얼버전 : ${d.unrealVersion}`);
     if (d.appVersion) lines.push(`앱버전 : ${d.appVersion}`);
     if (d.rnVersion) lines.push(`RN버전 : ${d.rnVersion}`);
+    if (d.model || d.osVersion) {
+      const name = d.model || '디바이스';
+      const os = d.osVersion ? `Android ${d.osVersion}` : '';
+      lines.push(`디바이스 정보 : ${name}${os ? `(${os})` : ''}`);
+    }
     return lines.join('\n');
   }
 
