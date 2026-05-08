@@ -237,40 +237,47 @@ const DevicePanel = {
   async fetchAppInfo() {
     if (!App.currentDevice) return;
     const btn = document.getElementById('fetch-app-info');
-    btn.textContent = '조회 중...';
-    btn.disabled = true;
-
-    this.detectedPkg = await this.detectPkg();
-    const pkg = this.detectedPkg;
-
-    if (pkg) {
-      try { await window.api.crashSetWatchedApp(pkg); } catch {}
+    if (btn) {
+      btn.textContent = '조회 중...';
+      btn.disabled = true;
     }
 
-    const info = await window.api.getRunningAppInfo(App.currentDevice, pkg);
-    info.buildType = pkg.endsWith('.dev') ? 'DEV' : 'RELEASE';
-    this.appInfo = info;
+    try {
+      this.detectedPkg = await this.detectPkg();
+      const pkg = this.detectedPkg;
 
-    const serverEl = document.getElementById('app-info-server');
-    const unrealEl = document.getElementById('app-info-unreal');
-    const appVerEl = document.getElementById('app-info-appver');
-    const rnVerEl = document.getElementById('app-info-rnver');
+      if (pkg) {
+        try { await window.api.crashSetWatchedApp(pkg); } catch {}
+      }
 
-    serverEl.textContent = info.server || '-';
-    unrealEl.textContent = info.unrealVersion || '-';
-    appVerEl.textContent = info.appVersion || '-';
-    if (rnVerEl) rnVerEl.textContent = info.rnVersion || '-';
+      const info = await window.api.getRunningAppInfo(App.currentDevice, pkg);
+      info.buildType = pkg.endsWith('.dev') ? 'DEV' : 'RELEASE';
+      this.appInfo = info;
 
-    const okColor = '#2DB400';
-    if (info.server) { serverEl.style.color = okColor; serverEl.style.fontWeight = '700'; }
-    if (info.unrealVersion) { unrealEl.style.color = okColor; unrealEl.style.fontWeight = '700'; }
-    if (info.appVersion) { appVerEl.style.color = okColor; appVerEl.style.fontWeight = '700'; }
-    if (rnVerEl && info.rnVersion) { rnVerEl.style.color = okColor; rnVerEl.style.fontWeight = '700'; }
+      const serverEl = document.getElementById('app-info-server');
+      const unrealEl = document.getElementById('app-info-unreal');
+      const appVerEl = document.getElementById('app-info-appver');
+      const rnVerEl = document.getElementById('app-info-rnver');
 
-    btn.textContent = '앱 정보 조회';
-    btn.disabled = false;
+      if (serverEl) serverEl.textContent = info.server || '-';
+      if (unrealEl) unrealEl.textContent = info.unrealVersion || '-';
+      if (appVerEl) appVerEl.textContent = info.appVersion || '-';
+      if (rnVerEl) rnVerEl.textContent = info.rnVersion || '-';
 
-    document.getElementById('copy-app-info').style.display = 'inline-block';
+      const okColor = '#2DB400';
+      if (serverEl && info.server) { serverEl.style.color = okColor; serverEl.style.fontWeight = '700'; }
+      if (unrealEl && info.unrealVersion) { unrealEl.style.color = okColor; unrealEl.style.fontWeight = '700'; }
+      if (appVerEl && info.appVersion) { appVerEl.style.color = okColor; appVerEl.style.fontWeight = '700'; }
+      if (rnVerEl && info.rnVersion) { rnVerEl.style.color = okColor; rnVerEl.style.fontWeight = '700'; }
+
+      const copyBtn = document.getElementById('copy-app-info');
+      if (copyBtn) copyBtn.style.display = 'inline-block';
+    } finally {
+      if (btn) {
+        btn.textContent = '앱 정보 조회';
+        btn.disabled = false;
+      }
+    }
   },
 
   copyAppInfo() {

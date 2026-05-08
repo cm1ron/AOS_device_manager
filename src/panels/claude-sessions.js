@@ -54,6 +54,7 @@
       el.className = 'claude-session';
       el.title = `클릭하면 명령 복사\n\nclaude --resume ${s.id}`;
       el.innerHTML = `
+        <button class="claude-session-del" title="삭제">✕</button>
         <div class="claude-session-preview"></div>
         <div class="claude-session-meta">
           <span>${fmtTime(s.mtime)}</span>
@@ -64,19 +65,30 @@
       el.querySelector('.claude-session-project').textContent = shortPath(s.cwd);
       el.addEventListener('click', async () => {
         const cmd = `claude --resume ${s.id}`;
+        const showToast = (msg, type) => {
+          if (window.App && window.App.toast) window.App.toast(msg, type || 'success');
+          else if (window.toast) window.toast(msg, type);
+        };
         try {
           await navigator.clipboard.writeText(cmd);
-          if (window.toast) window.toast('복사됨: ' + cmd);
+          showToast('복사 완료: ' + cmd, 'success');
         } catch (e) {
-          if (window.toast) window.toast('복사 실패: ' + e.message, 'error');
+          showToast('복사 실패: ' + e.message, 'error');
         }
       });
-      // 우클릭 → 삭제
-      el.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
+      const removeItem = () => {
         const list2 = load().filter((x) => x.id !== s.id);
         save(list2);
         render();
+      };
+      el.querySelector('.claude-session-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeItem();
+      });
+      // 우클릭 → 삭제 (기존 동작 유지)
+      el.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        removeItem();
       });
       body.appendChild(el);
     }

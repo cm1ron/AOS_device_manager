@@ -361,7 +361,12 @@ const App = {
     if (typeof LogcatPanel !== 'undefined' && LogcatPanel.running) {
       try { LogcatPanel.toggle(); } catch (e) {}
     }
-    if (typeof DevicePanel !== 'undefined') DevicePanel.refresh();
+    if (typeof DevicePanel !== 'undefined') {
+      DevicePanel.refresh();
+      if (this.currentDevice) {
+        DevicePanel.fetchAppInfo().catch((e) => console.warn('[onDeviceChanged] fetchAppInfo failed', e));
+      }
+    }
     if (typeof AppsPanel !== 'undefined') {
       AppsPanel.packages = [];
       if (this.currentDevice && this.currentPanel === 'apps') {

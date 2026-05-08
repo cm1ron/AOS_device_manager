@@ -7,9 +7,28 @@
   const CFG_KEY = 'jira.config.v1';
   const FALLBACK_LABELS = ['Studio', 'Avatar', 'QA_잔여이슈', 'Content', 'Social'];
   const DEFAULT_LABELS = ['QA_잔여이슈'];
-  const FALLBACK_COMPONENTS = ['Art', 'OVDR Studio', 'Platform Server', 'PPL', 'Web/Hub'];
-  const DEFAULT_COMPONENTS = ['PPL'];
   const BUG_CATEGORIES = ['App - Android', 'App - iOS', 'Unreal', 'Platform', 'Art', 'UI / UX', 'Design', 'Crash', 'Studio', 'Web'];
+  const LINKED_HISTORY_KEY = 'jira.linkedIssues.history.v1';
+  const LINKED_HISTORY_MAX = 12;
+  const ISSUE_KEY_PATTERN = /^[A-Z][A-Z0-9_]+-\d+$/;
+
+  function getLinkedHistory() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LINKED_HISTORY_KEY) || '[]');
+      return Array.isArray(raw) ? raw.filter((k) => typeof k === 'string' && ISSUE_KEY_PATTERN.test(k)) : [];
+    } catch { return []; }
+  }
+  function saveLinkedHistory(arr) {
+    try { localStorage.setItem(LINKED_HISTORY_KEY, JSON.stringify(arr.slice(0, LINKED_HISTORY_MAX))); } catch {}
+  }
+  function pushLinkedHistory(keys) {
+    const cur = getLinkedHistory();
+    const next = [...keys.filter((k) => ISSUE_KEY_PATTERN.test(k)), ...cur.filter((k) => !keys.includes(k))];
+    saveLinkedHistory(next);
+  }
+  function removeLinkedHistory(key) {
+    saveLinkedHistory(getLinkedHistory().filter((k) => k !== key));
+  }
 
   function getConfig() {
     try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { return null; }
@@ -154,18 +173,6 @@
     return row;
   }
 
-  async function fetchComponents(cfg) {
-    const allow = new Set(FALLBACK_COMPONENTS);
-    try {
-      const r = await window.api.jira.components(cfg, cfg.projectKey);
-      if (r.success && Array.isArray(r.items)) {
-        const names = r.items.map((c) => c.name).filter((n) => allow.has(n));
-        if (names.length) return names;
-      }
-    } catch {}
-    return FALLBACK_COMPONENTS;
-  }
-
   function buildDescriptionTemplate(deviceInfo) {
     const lines = [];
     if (deviceInfo) {
@@ -201,7 +208,6 @@
     }
 
     const sections = buildDescriptionTemplate(deviceInfo);
-    const componentsAvail = await fetchComponents(cfg);
 
     const titleSuffix = '';
     const { box, close } = modal(`
@@ -229,11 +235,11 @@
         ${BUG_CATEGORIES.map((c) => `<option value="${c}"${c === 'App - Android' ? ' selected' : ''}>${c}</option>`).join('')}
       </select>
 
-      <label style="font-size:12px;display:block;margin-bottom:4px">Components <span style="color:var(--red)">*</span></label>
-      <div id="jct-components"></div>
-
-      <label style="font-size:12px;display:block;margin:10px 0 4px">Labels <span style="color:var(--red)">*</span></label>
+      <label style="font-size:12px;display:block;margin-bottom:4px">Labels <span style="color:var(--red)">*</span></label>
       <div id="jct-labels"></div>
+
+      <label style="font-size:12px;display:block;margin:10px 0 4px">Linked Item <span style="color:var(--red)">*</span></label>
+      <div id="jct-linked"></div>
 
       <div id="jct-desc" style="display:none"></div>
 
@@ -251,10 +257,44 @@
     box.querySelectorAll('.jct-cancel, .jct-cancel2').forEach((b) => b.addEventListener('click', close));
     $('.jct-settings').addEventListener('click', () => { close(); showSettings(() => showCreateModal({ deviceInfo, attachments })); });
 
-    // Components / Labels chip 입력
-    const compInput = chipInput(DEFAULT_COMPONENTS.slice());
-    $('#jct-components').appendChild(compInput.el);
-    $('#jct-components').appendChild(suggestionRow(componentsAvail, compInput.add));
+    // Linked Item chip 입력 (대문자 변환 + 형식 강제)
+    const linkedInput = chipInput([]);
+    const linkedWrap = linkedInput.el;
+    const linkedTextInput = linkedWrap.querySelector('input');
+    linkedTextInput.placeholder = 'QA-184 (입력 후 Enter)';
+    linkedTextInput.style.textTransform = 'uppercase';
+    linkedTextInput.addEventListener('input', () => {
+      linkedTextInput.value = linkedTextInput.value.toUpperCase();
+    });
+    $('#jct-linked').appendChild(linkedWrap);
+
+    const linkedHistoryRow = document.createElement('div');
+    linkedHistoryRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:4px;margin-top:4px';
+    $('#jct-linked').appendChild(linkedHistoryRow);
+    function renderLinkedHistory() {
+      linkedHistoryRow.innerHTML = '';
+      const hist = getLinkedHistory();
+      if (!hist.length) return;
+      hist.forEach((key) => {
+        const chip = document.createElement('span');
+        chip.style.cssText = 'background:transparent;color:var(--accent);border:1px dashed var(--border);border-radius:3px;font-size:11px;padding:2px 6px;display:inline-flex;align-items:center;gap:4px';
+        const label = document.createElement('button');
+        label.type = 'button';
+        label.textContent = '+ ' + key;
+        label.style.cssText = 'background:transparent;color:var(--accent);border:none;cursor:pointer;padding:0;font-size:11px';
+        label.addEventListener('click', () => linkedInput.add(key));
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.textContent = '×';
+        del.title = '히스토리에서 제거';
+        del.style.cssText = 'background:transparent;color:var(--text-muted);border:none;cursor:pointer;padding:0 0 0 2px;font-size:13px;line-height:1';
+        del.addEventListener('click', (e) => { e.stopPropagation(); removeLinkedHistory(key); renderLinkedHistory(); });
+        chip.appendChild(label);
+        chip.appendChild(del);
+        linkedHistoryRow.appendChild(chip);
+      });
+    }
+    renderLinkedHistory();
 
     const labelInput = chipInput(DEFAULT_LABELS.slice());
     $('#jct-labels').appendChild(labelInput.el);
@@ -303,11 +343,13 @@
     $('.jct-create').addEventListener('click', async () => {
       const summary = $('#jct-summary').value.trim() + titleSuffix;
       const labels = labelInput.get();
-      const components = compInput.get();
+      const linkedRaw = linkedInput.get().map((k) => String(k).toUpperCase().trim());
       const bugCategory = $('#jct-bugcat').value;
       if (!summary) { $('#jct-status').innerHTML = '<span style="color:var(--red)">제목을 입력해주세요</span>'; return; }
       if (!bugCategory) { $('#jct-status').innerHTML = '<span style="color:var(--red)">Bug Category 를 선택해주세요</span>'; return; }
-      if (!components.length) { $('#jct-status').innerHTML = '<span style="color:var(--red)">Components 1개 이상 선택</span>'; return; }
+      if (!linkedRaw.length) { $('#jct-status').innerHTML = '<span style="color:var(--red)">Linked Item 1개 이상 입력 (예: QA-184)</span>'; return; }
+      const invalid = linkedRaw.filter((k) => !ISSUE_KEY_PATTERN.test(k));
+      if (invalid.length) { $('#jct-status').innerHTML = `<span style="color:var(--red)">잘못된 이슈 키 형식: ${invalid.join(', ')}</span>`; return; }
       if (!labels.length) { $('#jct-status').innerHTML = '<span style="color:var(--red)">Labels 1개 이상 선택</span>'; return; }
 
       const descSections = sectionInputs.map((s) => ({ heading: s.heading, kind: s.kind, text: s.ta.value }));
@@ -318,13 +360,17 @@
         issueType: 'Bug',
         summary,
         labels,
-        components,
         bugCategory,
+        linkedIssues: linkedRaw,
+        linkType: 'Relates',
         descriptionSections: descSections,
       }, attList);
       $('.jct-create').disabled = false;
       if (r.success) {
-        $('#jct-status').innerHTML = `<span style="color:var(--green)">✓ ${r.key} 생성 완료</span> &nbsp; <a href="#" id="jct-open" style="color:var(--accent)">[Jira 에서 열기]</a> &nbsp; <a href="#" id="jct-close-now" style="color:var(--text-muted)">[닫기]</a>`;
+        pushLinkedHistory(linkedRaw);
+        const linkFails = (r.links || []).filter((l) => l && !l.ok);
+        const linkNote = linkFails.length ? ` <span style="color:var(--red)">(링크 실패: ${linkFails.map((l) => l.key).join(', ')})</span>` : '';
+        $('#jct-status').innerHTML = `<span style="color:var(--green)">✓ ${r.key} 생성 완료</span>${linkNote} &nbsp; <a href="#" id="jct-open" style="color:var(--accent)">[Jira 에서 열기]</a> &nbsp; <a href="#" id="jct-close-now" style="color:var(--text-muted)">[닫기]</a>`;
         $('#jct-open').addEventListener('click', (e) => {
           e.preventDefault();
           const url = r.url;

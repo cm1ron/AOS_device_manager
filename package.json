@@ -55,7 +55,7 @@
       "artifactName": "AndroidDeviceManager-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "AndroidDeviceManager-Portable.exe"
+      "artifactName": "QA Manager.exe"
     },
     "mac": {
       "target": [

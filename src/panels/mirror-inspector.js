@@ -1076,15 +1076,27 @@ const MirrorInspector = {
 
   async _collectJiraPayload() {
     App.toast('디바이스 정보 / 스크린샷 수집 중...', 'info');
+    const DP = (typeof DevicePanel !== 'undefined') ? DevicePanel : (window.DevicePanel || null);
     let info = null;
-    let pkg = (window.DevicePanel && DevicePanel.detectedPkg) || null;
-    try {
-      if (!pkg) {
-        const fg = await window.api.getForegroundPkg(App.currentDevice);
-        if (fg) pkg = fg;
-      }
-    } catch {}
-    try { info = pkg ? await window.api.getRunningAppInfo(App.currentDevice, pkg) : null; } catch {}
+    let pkg = (DP && DP.detectedPkg) || null;
+    let cachedInfo = (DP && DP.appInfo) || null;
+
+    if ((!pkg || !cachedInfo) && DP && typeof DP.fetchAppInfo === 'function') {
+      try { await DP.fetchAppInfo(); } catch (e) { console.warn('[jira] fetchAppInfo failed', e); }
+      pkg = DP.detectedPkg || pkg;
+      cachedInfo = DP.appInfo || cachedInfo;
+    }
+    if (pkg && cachedInfo) {
+      info = cachedInfo;
+    } else {
+      try {
+        if (!pkg) {
+          const fg = await window.api.getForegroundPkg(App.currentDevice);
+          if (fg) pkg = fg;
+        }
+      } catch {}
+      try { info = pkg ? await window.api.getRunningAppInfo(App.currentDevice, pkg) : null; } catch {}
+    }
     let model = '', osVersion = '', chipset = '';
     try {
       const di = await window.api.getDeviceInfo(App.currentDevice);

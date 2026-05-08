@@ -697,17 +697,71 @@
             </div>
           </div>
           <div class="notice-section" style="margin-top:16px">
+            <h3 class="notice-section-title">🆕 최근 추가된 기능 사용 방법</h3>
+            <div class="notice-list">
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>Jira 버그 티켓 자동 생성</strong></div>
+                <ol style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
+                  <li>좌측 메뉴 → <b>Mirror &amp; Inspect</b> 진입</li>
+                  <li>우측 상단의 <b>+ Create Jira Bug Ticket</b> 버튼 클릭</li>
+                  <li>최초 1회: ⚙️ 아이콘으로 <b>Atlassian 이메일 + API Token</b> 입력
+                    (토큰 발급: id.atlassian.com/manage-profile/security/api-tokens)</li>
+                  <li>제목 / Bug Category / Linked Item / Labels 입력 후 <b>티켓 생성</b></li>
+                  <li>현재 디바이스의 OVERDARE 앱 정보 + 스크린샷 + Meta.log + LogHandler 로그가 자동 첨부됨</li>
+                </ol>
+              </div>
+
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>Jira 티켓 Reopen</strong></div>
+                <ol style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
+                  <li>Mirror &amp; Inspect 우측 상단의 빨간 <b>Reopen</b> 버튼 클릭</li>
+                  <li>리오픈할 <b>Issue Key</b> 입력 (예: QA-9162)</li>
+                  <li>댓글 본문에 앱 정보 + 안내 문구가 자동 prefill (수정 가능)</li>
+                  <li>스크린샷 / 로그 자동 첨부 (필요 없는 항목은 ✕ 로 제외 가능)</li>
+                  <li><b>Reopen</b> 클릭 → 첨부 업로드 → 댓글 작성 → 상태가 <b>Reopened</b> 로 자동 전이</li>
+                </ol>
+              </div>
+
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>BVT 자동화 테스트</strong></div>
+                <ol style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
+                  <li>좌측 <b>자동화</b> 폴더 → <b>자동화 테스트</b> 진입</li>
+                  <li>디바이스 선택 (무선 디바이스는 <code>config.py</code> 에 자동 등록됨)</li>
+                  <li>실행할 시나리오 체크 (시나리오 목록은 <code>main.py</code> 에서 자동 파싱)</li>
+                  <li>옵션 선택 (Slack 알림 / 비디오 녹화 / 미러링 등)</li>
+                  <li><b>실행</b> 클릭 → 콘솔에서 실시간 결과 확인, 종료 시 자동 정리</li>
+                </ol>
+              </div>
+
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>웹뷰 (Jira / Confluence / Sable 등) 편의 기능</strong></div>
+                <ul style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
+                  <li>마우스 <b>옆 버튼</b> 또는 <b>Alt + ←/→</b> 로 페이지/패널 뒤로/앞으로</li>
+                  <li><b>Ctrl + +/- /0</b> 또는 <b>Ctrl + 휠</b> 로 페이지 확대/축소 (앱 재실행해도 유지)</li>
+                  <li>Confluence 에서 Jira 링크 클릭 시 → Jira 패널로 자동 이동</li>
+                  <li>각 웹뷰 카테고리는 마지막 본 URL 을 기억</li>
+                </ul>
+              </div>
+
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>설정 (다크/라이트 모드 · 알림)</strong></div>
+                <ul style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
+                  <li>좌측 하단 ⚙️ 아이콘 → 다크/라이트 모드 전환, Notification 패널 이동</li>
+                  <li><b>F12</b> 로 DevTools 열기 가능</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="notice-section" style="margin-top:16px">
             <h3 class="notice-section-title">📋 향후 추가 예정</h3>
             <div class="notice-list">
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>Slack 크래시 알림 연동 (Webhook으로 자동 전송)</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>TC 실행 체크리스트 (Pass/Fail/Skip + 결과 내보내기)</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>퍼포먼스 모니터 (CPU/메모리/배터리 실시간 그래프)</span></div>
-              <div class="notice-item"><span class="notice-tag todo">예정</span><span>원클릭 버그 리포트 (스크린샷+로그+디바이스 정보 자동 수집)</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>Monkey 자동 스트레스 테스트</span></div>
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>다중 디바이스 비교 (동시 설치, 스크린샷 비교)</span></div>
-              <div class="notice-item"><span class="notice-tag todo">예정</span><span>QA 사이트 북마크 패널 (자주 쓰는 사이트 바로가기)</span></div>
-              <div class="notice-item"><span class="notice-tag todo">예정</span><span>좌측 카테고리 폴더 그룹화 (접기/펼치기)</span></div>
-              <div class="notice-item"><span class="notice-tag todo">예정</span><span>Jira 자동 티켓 등록 (디바이스 정보 + 스크린샷 + 로그 자동 첨부)</span></div>
+              <div class="notice-item"><span class="notice-tag todo">예정</span><span>UI 스캔 선택 박스 디바이스별 좌표 보정 (A34 등)</span></div>
             </div>
           </div>
         </div>

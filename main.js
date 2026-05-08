@@ -775,6 +775,17 @@ function setupIpcHandlers() {
         bugCategory: payload.bugCategory,
         frequency: payload.frequency,
       });
+      const linkResults = [];
+      const linkedIssues = Array.isArray(payload.linkedIssues) ? payload.linkedIssues : [];
+      const linkType = payload.linkType || 'Relates';
+      for (const targetKey of linkedIssues) {
+        try {
+          await client.createIssueLink(issue.key, targetKey, linkType);
+          linkResults.push({ key: targetKey, ok: true });
+        } catch (e) {
+          linkResults.push({ key: targetKey, ok: false, error: e.message });
+        }
+      }
       const attachResults = [];
       for (const att of (attachments || [])) {
         try {
@@ -791,7 +802,7 @@ function setupIpcHandlers() {
         }
       }
       const issueUrl = `${cfg.baseUrl.replace(/\/$/, '')}/browse/${issue.key}`;
-      return { success: true, key: issue.key, url: issueUrl, attachments: attachResults };
+      return { success: true, key: issue.key, url: issueUrl, attachments: attachResults, links: linkResults };
     } catch (e) { return { success: false, error: e.message, status: e.status, body: e.body }; }
   });
 
