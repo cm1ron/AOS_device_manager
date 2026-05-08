@@ -66,12 +66,15 @@
       el.addEventListener('click', async () => {
         const cmd = `claude --resume ${s.id}`;
         const showToast = (msg, type) => {
-          if (window.App && window.App.toast) window.App.toast(msg, type || 'success');
-          else if (window.toast) window.toast(msg, type);
+          try {
+            if (typeof App !== 'undefined' && App.toast) { App.toast(msg, type || 'success'); return; }
+          } catch {}
+          if (window.App && window.App.toast) { window.App.toast(msg, type || 'success'); return; }
+          if (window.toast) window.toast(msg, type);
         };
         try {
           await navigator.clipboard.writeText(cmd);
-          showToast('복사 완료: ' + cmd, 'success');
+          showToast('복사 완료', 'success');
         } catch (e) {
           showToast('복사 실패: ' + e.message, 'error');
         }
