@@ -2,6 +2,23 @@
   const ZOOM_KEY = (id) => `wv-zoom:${id}`;
   const URL_KEY = (id) => `wv-last-url:${id}`;
 
+  // 저장된 마지막 URL 을 한 번만 강제 리셋해야 할 때 사용.
+  // - id 변경/삭제는 절대 금지(기존 사용자 영향)
+  // - 새 항목은 배열에 push 만 하면 됨
+  const URL_MIGRATIONS = [
+    { id: 'reset-jira-2026-05', webviewIds: ['jira-webview'] },
+  ];
+  try {
+    for (const m of URL_MIGRATIONS) {
+      const flag = `wv-migration:${m.id}`;
+      if (localStorage.getItem(flag)) continue;
+      for (const wid of (m.webviewIds || [])) {
+        localStorage.removeItem(URL_KEY(wid));
+      }
+      localStorage.setItem(flag, '1');
+    }
+  } catch {}
+
   // Jira issue URL 패턴 (atlassian.net/browse/XXX-123)
   const JIRA_BROWSE_RE = /^https?:\/\/[^/]*atlassian\.net\/browse\//i;
 

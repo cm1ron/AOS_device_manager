@@ -482,7 +482,7 @@
       <div class="panel" id="panel-jira" style="padding:0">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
           <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img src="../assets/icon-jira.png" style="width:18px;height:18px;object-fit:contain">Jira</span>
-          <span style="font-size:11px;color:var(--text-muted)" id="jira-url-label">https://overdare.atlassian.net/issues/?filter=-2</span>
+          <span style="font-size:11px;color:var(--text-muted)" id="jira-url-label">https://overdare.atlassian.net/</span>
           <div style="flex:1"></div>
           <button class="btn btn-sm bookmark-toggle" data-site="jira" title="즐겨찾기">⭐</button>
           <button class="btn btn-sm" id="jira-reload" title="새로고침">↻</button>
@@ -491,7 +491,7 @@
           <button class="btn btn-sm" id="jira-open-external" title="브라우저로 열기">↗</button>
         </div>
         <div class="panel-body" style="flex:1;display:flex;min-height:0">
-          <webview id="jira-webview" data-src="https://overdare.atlassian.net/issues/?filter=-2" data-partition="persist:jira" style="flex:1;height:100%" allowpopups></webview>
+          <webview id="jira-webview" data-src="https://overdare.atlassian.net/" data-partition="persist:jira" style="flex:1;height:100%" allowpopups></webview>
         </div>
       </div>
 
