@@ -113,6 +113,10 @@
   <div class="nav-popover" id="nav-popover-settings">
     <div class="nav-popover-arrow"></div>
     <div class="nav-popover-title">설정</div>
+    <div class="nav-popover-item" data-panel="memo">
+      <span class="nav-popover-icon">📝</span>
+      <span class="nav-popover-label">메모 / 회의록</span>
+    </div>
     <div class="nav-popover-item" id="settings-theme-toggle">
       <span class="nav-popover-icon"><span id="theme-icon-dark">🌙</span><span id="theme-icon-light" style="display:none">☀️</span></span>
       <span class="nav-popover-label" id="settings-theme-label">다크 모드</span>
@@ -764,6 +768,43 @@
               <div class="notice-item"><span class="notice-tag todo">예정</span><span>UI 스캔 선택 박스 디바이스별 좌표 보정 (A34 등)</span></div>
             </div>
           </div>
+
+        </div>
+      </div>
+
+      <!-- Memo Panel -->
+      <div class="panel" id="panel-memo">
+        <h2 class="panel-title" style="display:flex;align-items:center;gap:10px">
+          📝 메모 / 회의록
+          <span id="notice-memo-status" style="font-size:12px;font-weight:400;color:var(--text-muted);margin-left:auto"></span>
+          <button class="btn btn-sm" id="notice-memo-record" title="회의 녹음 시작/중지 (마이크)">🎤 녹음</button>
+          <button class="btn btn-sm" id="notice-memo-new" title="새 메모 추가">＋ 새 메모</button>
+          <button class="btn btn-sm" id="notice-memo-rename" title="현재 메모 이름 변경">✏️ 이름</button>
+          <button class="btn btn-sm" id="notice-memo-download" title="텍스트 파일로 저장">⬇ 저장</button>
+          <button class="btn btn-sm" id="notice-memo-delete" title="현재 메모 삭제">🗑 삭제</button>
+        </h2>
+        <div style="flex:1;display:flex;min-height:0;gap:10px;padding:10px">
+          <div style="width:220px;display:flex;flex-direction:column;gap:6px;border:1px solid var(--border);border-radius:6px;padding:8px;overflow:auto;background:var(--bg-elevated)">
+            <div style="font-size:11px;color:var(--text-muted);padding:0 4px 4px">메모 목록</div>
+            <div id="notice-memo-list" style="display:flex;flex-direction:column;gap:4px"></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0;border:1px solid var(--border);border-radius:6px;background:var(--bg-input,var(--bg-elevated));overflow:hidden">
+            <div id="notice-memo-toolbar" style="display:flex;gap:2px;padding:4px 6px;border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center;background:var(--bg-elevated)">
+              <button class="memo-tb" data-cmd="bold" title="굵게 (Ctrl+B)" style="font-weight:700">B</button>
+              <button class="memo-tb" data-cmd="italic" title="기울임 (Ctrl+I)" style="font-style:italic">I</button>
+              <button class="memo-tb" data-cmd="underline" title="밑줄 (Ctrl+U)" style="text-decoration:underline">U</button>
+              <button class="memo-tb" data-cmd="strikeThrough" title="취소선" style="text-decoration:line-through">S</button>
+              <span class="memo-tb-sep"></span>
+              <button class="memo-tb" data-cmd="insertUnorderedList" title="불릿 리스트 (- + 스페이스)">•</button>
+              <button class="memo-tb" data-cmd="insertOrderedList" title="번호 리스트 (1. + 스페이스)">1.</button>
+              <button class="memo-tb" data-cmd="outdent" title="내어쓰기 (Shift+Tab)">⇤</button>
+              <button class="memo-tb" data-cmd="indent" title="들여쓰기 (Tab)">⇥</button>
+              <span class="memo-tb-sep"></span>
+              <button class="memo-tb" data-cmd="createLink" title="링크 삽입">🔗</button>
+              <button class="memo-tb" data-cmd="removeFormat" title="서식 제거">✕</button>
+            </div>
+            <div id="notice-memo" contenteditable="true" spellcheck="false" data-placeholder="자유롭게 작성하세요. 자동 저장됩니다." style="flex:1;padding:12px 14px;font-size:13px;line-height:1.7;color:var(--text);outline:none;overflow:auto;word-wrap:break-word"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -792,5 +833,6 @@
   <script src="panels/bookmarks.js"></script>
   <script src="panels/jira-ticket.js"></script>
   <script src="panels/bvt.js"></script>
+  <script src="panels/notice-memo.js"></script>
 </body>
 </html>
