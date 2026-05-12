@@ -42,25 +42,41 @@
   }
 
   // cwd 목록을 받아 각 cwd 의 최근 claude 세션을 자동 스탬프 저장.
+  // 매칭 전략:
+  //   1) 정확 일치(normPath)
+  //   2) 어느 한쪽이 다른쪽으로 끝나는 경우(prefix 누락 케이스 보정)
+  //   3) basename 일치 (마지막 폴더명만 같아도 OK — claude 인코딩 보정)
   window.autoStampClaudeSessions = async function (cwds) {
     try {
       if (!Array.isArray(cwds) || !cwds.length) return 0;
       if (!window.api || !window.api.listClaudeSessions) return 0;
       const res = await window.api.listClaudeSessions(200);
       if (!res || !res.ok || !Array.isArray(res.sessions)) return 0;
-      const wanted = new Set(cwds.filter(Boolean).map(normPath));
+      const wantedList = cwds.filter(Boolean).map(normPath);
+      if (!wantedList.length) return 0;
+      const baseOf = (p) => (p.split('/').pop() || '').toLowerCase();
+      const wantedBases = new Set(wantedList.map(baseOf).filter(Boolean));
       const seenCwd = new Set();
       let n = 0;
+      console.log('[autoStamp] wanted=', wantedList, 'wantedBases=', [...wantedBases],
+        'sessions(top5)=', res.sessions.slice(0, 5).map((s) => ({ id: s.id, proj: s.project, path: s.projectPath, mtime: s.mtime })));
       for (const s of res.sessions) {
         const np = normPath(s.projectPath);
-        if (!wanted.has(np)) continue;
-        if (seenCwd.has(np)) continue;
-        seenCwd.add(np);
+        const base = baseOf(np);
+        let matched = false;
+        if (wantedList.includes(np)) matched = true;
+        else if (wantedList.some((w) => w && (w.endsWith(np) || np.endsWith(w)))) matched = true;
+        else if (base && wantedBases.has(base)) matched = true;
+        if (!matched) continue;
+        const key = base || np;
+        if (seenCwd.has(key)) continue;
+        seenCwd.add(key);
         add(s.id, s.projectPath);
         n++;
       }
+      console.log('[autoStamp] saved=', n);
       return n;
-    } catch { return 0; }
+    } catch (e) { console.warn('[autoStamp] error', e); return 0; }
   };
 
   function fmtTime(ms) {

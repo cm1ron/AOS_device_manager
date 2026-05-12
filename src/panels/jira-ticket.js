@@ -198,6 +198,21 @@
     ];
   }
 
+  // 스크린샷 폴더에서 파일 선택 → attList 에 추가
+  async function pickFromScreenshotsAndAppend(attList, renderFn) {
+    try {
+      if (!window.api || !window.api.pickAttachmentsFromScreenshots) return;
+      const r = await window.api.pickAttachmentsFromScreenshots();
+      if (!r || !r.ok || !Array.isArray(r.files)) return;
+      for (const f of r.files) {
+        if (f && f.dataBase64) attList.push({ filename: f.filename, dataBase64: f.dataBase64 });
+      }
+      renderFn();
+    } catch (e) {
+      console.warn('첨부 추가 실패:', e);
+    }
+  }
+
   // deviceInfo: { serial, model, osVersion, appVersion, rnVersion, foregroundPkg }
   // attachments: [{ filename, dataBase64 }] 또는 [{ filename, path }]
   async function showCreateModal({ deviceInfo, attachments } = {}) {
@@ -245,6 +260,11 @@
 
       <div style="margin:14px 0 6px;font-size:12px">첨부</div>
       <div id="jct-attachments" style="font-size:11px;color:var(--text-muted)"></div>
+      <div style="margin:6px 0 0">
+        <button type="button" id="jct-att-add" class="btn"
+          title="스크린샷 폴더에서 파일 선택"
+          style="font-size:10px;padding:1px 6px;height:18px;line-height:1;border-radius:3px">+ 첨부 추가</button>
+      </div>
 
       <div id="jct-status" style="font-size:12px;margin:10px 0;min-height:18px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -340,6 +360,8 @@
     };
     renderAttachments();
 
+    $('#jct-att-add').addEventListener('click', () => pickFromScreenshotsAndAppend(attList, renderAttachments));
+
     $('.jct-create').addEventListener('click', async () => {
       const summary = $('#jct-summary').value.trim() + titleSuffix;
       const labels = labelInput.get();
@@ -362,7 +384,7 @@
         labels,
         bugCategory,
         linkedIssues: linkedRaw,
-        linkType: 'Relates',
+        linkType: 'Blocks',
         descriptionSections: descSections,
       }, attList);
       $('.jct-create').disabled = false;
@@ -452,7 +474,12 @@
       <div style="font-size:10px;color:var(--text-muted);margin-bottom:12px">앱 정보가 자동으로 포함되어 있습니다. 자유롭게 수정하세요.</div>
 
       <div style="margin:14px 0 6px;font-size:12px">첨부</div>
-      <div id="jrm-attachments" style="font-size:11px;color:var(--text-muted);margin-bottom:12px"></div>
+      <div id="jrm-attachments" style="font-size:11px;color:var(--text-muted)"></div>
+      <div style="margin:6px 0 12px">
+        <button type="button" id="jrm-att-add" class="btn"
+          title="스크린샷 폴더에서 파일 선택"
+          style="font-size:10px;padding:1px 6px;height:18px;line-height:1;border-radius:3px">+ 첨부 추가</button>
+      </div>
 
       <div id="jrm-status" style="font-size:12px;margin:10px 0;min-height:18px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -491,6 +518,8 @@
       });
     };
     renderAttachments();
+
+    $('#jrm-att-add').addEventListener('click', () => pickFromScreenshotsAndAppend(attList, renderAttachments));
 
     $('.jrm-submit').addEventListener('click', async () => {
       const key = ($('#jrm-key').value || '').trim().toUpperCase();

@@ -329,7 +329,8 @@ const App = {
     unique.forEach((d) => {
       const opt = document.createElement('option');
       opt.value = d.serial;
-      opt.textContent = this.formatDeviceLabel(d);
+      const stateBadge = d.state && d.state !== 'device' ? ` [${d.state}]` : '';
+      opt.textContent = this.formatDeviceLabel(d) + stateBadge;
       sel.appendChild(opt);
     });
 
@@ -354,7 +355,65 @@ const App = {
     this.onDeviceChanged();
   },
 
+  updateDeviceStatusBanner() {
+    const banner = document.getElementById('device-status-banner');
+    if (!banner) return;
+    const dev = (this.devices || []).find((d) => d.serial === this.currentDevice);
+    if (!dev || dev.state === 'device') {
+      banner.style.display = 'none';
+      banner.innerHTML = '';
+      return;
+    }
+    const isWireless = /^\d+\.\d+\.\d+\.\d+:\d+$/.test(dev.serial);
+    let icon = '⚠';
+    let cls = 'warn';
+    let msg = '';
+    let actionBtn = '';
+    if (dev.state === 'offline') {
+      msg = isWireless
+        ? `디바이스 <b>${dev.serial}</b> 가 offline 입니다. Wi-Fi 변경 / 절전으로 세션이 끊겼을 가능성이 큽니다.`
+        : `디바이스 <b>${dev.serial}</b> 가 offline 입니다. USB 케이블을 다시 연결해보세요.`;
+      if (isWireless) actionBtn = `<button id="dsb-reconnect-btn">재연결 시도</button>`;
+    } else if (dev.state === 'unauthorized') {
+      msg = `디바이스 <b>${dev.serial}</b> 가 unauthorized 입니다. 폰 화면에서 USB 디버깅 인증을 허용해주세요.`;
+      cls = 'error';
+      icon = '⛔';
+    } else {
+      msg = `디바이스 상태: ${dev.state}`;
+    }
+    banner.className = `device-status-banner ${cls}`;
+    banner.innerHTML = `
+      <span class="dsb-icon">${icon}</span>
+      <span class="dsb-msg">${msg}</span>
+      <span class="dsb-actions">${actionBtn}</span>
+    `;
+    banner.style.display = 'flex';
+    const btn = document.getElementById('dsb-reconnect-btn');
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = '재연결 중...';
+        try {
+          if (window.api.reconnectWireless) {
+            await window.api.reconnectWireless(dev.serial);
+          } else if (window.api.adbConnect && window.api.adbDisconnect) {
+            await window.api.adbDisconnect(dev.serial);
+            await window.api.adbConnect(dev.serial);
+          }
+          this.toast('재연결 시도 완료', 'info');
+          await this.loadDevices();
+        } catch (e) {
+          this.toast('재연결 실패: ' + (e && e.message || e), 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '재연결 시도';
+        }
+      });
+    }
+  },
+
   async onDeviceChanged() {
+    this.updateDeviceStatusBanner();
     if (typeof MirrorInspector !== 'undefined') {
       try { await MirrorInspector.cleanupForDeviceSwitch(); } catch (e) { console.warn(e); }
     }
@@ -363,7 +422,9 @@ const App = {
     }
     if (typeof DevicePanel !== 'undefined') {
       DevicePanel.refresh();
-      if (this.currentDevice) {
+      const dev = (this.devices || []).find((d) => d.serial === this.currentDevice);
+      const isOnline = !dev || dev.state === 'device';
+      if (this.currentDevice && isOnline) {
         DevicePanel.fetchAppInfo().catch((e) => console.warn('[onDeviceChanged] fetchAppInfo failed', e));
       }
     }

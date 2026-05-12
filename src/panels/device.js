@@ -226,17 +226,35 @@ const DevicePanel = {
       const fg = await window.api.getForegroundPkg(App.currentDevice);
       if (fg && APP_PKGS.includes(fg)) return fg;
     } catch {}
-    const pkgs = await window.api.listPackages(App.currentDevice);
-    const names = pkgs.map(p => p.name);
-    for (const candidate of APP_PKGS) {
-      if (names.includes(candidate)) return candidate;
-    }
-    return APP_PKGS[0];
+    try {
+      const pkgs = await window.api.listPackages(App.currentDevice);
+      const names = pkgs.map(p => p.name);
+      for (const candidate of APP_PKGS) {
+        if (names.includes(candidate)) return candidate;
+      }
+    } catch {}
+    return null;
+  },
+
+  async _isPkgRunning(pkg) {
+    try {
+      const fg = await window.api.getForegroundPkg(App.currentDevice);
+      if (fg === pkg) return true;
+    } catch {}
+    try {
+      if (typeof window.api.isAppRunning === 'function') {
+        return !!(await window.api.isAppRunning(App.currentDevice, pkg));
+      }
+    } catch {}
+    return false;
   },
 
   async fetchAppInfo() {
     if (!App.currentDevice) return;
     const btn = document.getElementById('fetch-app-info');
+    const restoreBtn = (label = '앱 정보 조회') => {
+      if (btn) { btn.textContent = label; btn.disabled = false; }
+    };
     if (btn) {
       btn.textContent = '조회 중...';
       btn.disabled = true;
@@ -246,11 +264,38 @@ const DevicePanel = {
       this.detectedPkg = await this.detectPkg();
       const pkg = this.detectedPkg;
 
-      if (pkg) {
-        try { await window.api.crashSetWatchedApp(pkg); } catch {}
+      if (!pkg) {
+        restoreBtn('앱 미설치');
+        setTimeout(() => restoreBtn(), 1500);
+        return;
       }
 
-      const info = await window.api.getRunningAppInfo(App.currentDevice, pkg);
+      const running = await this._isPkgRunning(pkg);
+      if (!running) {
+        restoreBtn('앱 미실행');
+        setTimeout(() => restoreBtn(), 1500);
+        return;
+      }
+
+      try { await window.api.crashSetWatchedApp(pkg); } catch {}
+
+      const TIMEOUT_MS = 8000;
+      const info = await Promise.race([
+        window.api.getRunningAppInfo(App.currentDevice, pkg),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), TIMEOUT_MS)),
+      ]).catch((e) => {
+        if (e && e.message === 'timeout') {
+          try { App.toast('앱 정보 조회 시간 초과', 'error'); } catch {}
+        } else {
+          console.warn('[fetchAppInfo] failed', e);
+        }
+        return null;
+      });
+      if (!info) {
+        restoreBtn('재시도');
+        setTimeout(() => restoreBtn(), 1500);
+        return;
+      }
       info.buildType = pkg.endsWith('.dev') ? 'DEV' : 'RELEASE';
       this.appInfo = info;
 

@@ -27,9 +27,10 @@ contextBridge.exposeInMainWorld('api', {
   webview: {
     find: (id, text, opts) => ipcRenderer.invoke('webview:find', id, text, opts),
     stopFind: (id) => ipcRenderer.invoke('webview:find-stop', id),
-    onFindOpen: (cb) => ipcRenderer.on('webview:find-open', (_e, id) => cb(id)),
+    onFindOpen: (cb) => ipcRenderer.on('webview:find-open', (_e, id, withReplace) => cb(id, withReplace)),
     onFindClose: (cb) => ipcRenderer.on('webview:find-close', (_e, id) => cb(id)),
     onFindResult: (cb) => ipcRenderer.on('webview:find-result', (_e, payload) => cb(payload)),
+    execJs: (id, code) => ipcRenderer.invoke('webview:exec-js', id, code),
   },
   listClaudeSessions: (limit) => ipcRenderer.invoke('claude:list-sessions', limit),
   getDevices: () => ipcRenderer.invoke('adb:get-devices'),
@@ -146,6 +147,7 @@ contextBridge.exposeInMainWorld('api', {
   openLogsTodayFolder: () => ipcRenderer.invoke('logs:open-today-folder'),
   saveScreenshot: (base64Data) => ipcRenderer.invoke('adb:save-screenshot', base64Data),
   openScreenshotFolder: () => ipcRenderer.invoke('shell:open-screenshot-folder'),
+  pickAttachmentsFromScreenshots: () => ipcRenderer.invoke('dialog:pick-files-from-screenshots'),
 
   readLogsDir: (dirPath) => ipcRenderer.invoke('fs:read-logs-dir', dirPath),
   fetchRecentLog: (serial) => ipcRenderer.invoke('adb:fetch-recent-log', serial),

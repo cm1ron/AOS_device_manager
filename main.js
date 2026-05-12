@@ -542,6 +542,31 @@ function setupIpcHandlers() {
     shell.openPath(dir);
   });
 
+  ipcMain.handle('dialog:pick-files-from-screenshots', async () => {
+    const fs = require('fs');
+    const today = new Date().toISOString().slice(0, 10);
+    const todayDir = path.join(BASE_DIR, 'screenshots', today);
+    const rootDir = path.join(BASE_DIR, 'screenshots');
+    fs.mkdirSync(todayDir, { recursive: true });
+    const defaultPath = fs.existsSync(todayDir) ? todayDir : rootDir;
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: '첨부할 파일 선택 (스크린샷 폴더)',
+      defaultPath,
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true, files: [] };
+    const files = [];
+    for (const fp of result.filePaths) {
+      try {
+        const buf = fs.readFileSync(fp);
+        files.push({ filename: path.basename(fp), dataBase64: buf.toString('base64') });
+      } catch (e) {
+        files.push({ filename: path.basename(fp), error: e.message });
+      }
+    }
+    return { ok: true, files };
+  });
+
   ipcMain.handle('dialog:save-file', async (_, defaultName) => {
     const result = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultName,
@@ -780,7 +805,8 @@ function setupIpcHandlers() {
       const linkType = payload.linkType || 'Relates';
       for (const targetKey of linkedIssues) {
         try {
-          await client.createIssueLink(issue.key, targetKey, linkType);
+          // 새 티켓이 "is blocked by" 대상 → inward = 대상, outward = 새 티켓
+          await client.createIssueLink(targetKey, issue.key, linkType);
           linkResults.push({ key: targetKey, ok: true });
         } catch (e) {
           linkResults.push({ key: targetKey, ok: false, error: e.message });
@@ -980,12 +1006,13 @@ app.on('web-contents-created', (_e, contents) => {
     const isCtrlMeta = input.control || input.meta;
     const isCtrlR = isCtrlMeta && (input.key === 'r' || input.key === 'R');
     const isCtrlF = isCtrlMeta && (input.key === 'f' || input.key === 'F') && !input.shift;
+    const isCtrlH = isCtrlMeta && (input.key === 'h' || input.key === 'H') && !input.shift;
     const isEscape = input.key === 'Escape';
-    if (isCtrlF) {
+    if (isCtrlF || isCtrlH) {
       event.preventDefault();
       try {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('webview:find-open', contents.id);
+          mainWindow.webContents.send('webview:find-open', contents.id, isCtrlH);
         }
       } catch { /* ignore */ }
       return;
@@ -1064,6 +1091,14 @@ ipcMain.handle('webview:find-stop', (_e, webContentsId) => {
     const contents = webContents.fromId(webContentsId);
     if (contents) contents.stopFindInPage('clearSelection');
     return { success: true };
+  } catch (e) { return { success: false, error: e.message }; }
+});
+ipcMain.handle('webview:exec-js', async (_e, webContentsId, code) => {
+  try {
+    const contents = webContents.fromId(webContentsId);
+    if (!contents) return { success: false, error: 'webContents not found' };
+    const result = await contents.executeJavaScript(code, true);
+    return { success: true, result };
   } catch (e) { return { success: false, error: e.message }; }
 });
 

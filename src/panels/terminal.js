@@ -392,18 +392,35 @@ const TerminalPanel = {
     } catch { /* keep empty */ }
     try { this.adbPath = await window.api.terminal.getAdbPath() || 'adb'; } catch { /* ignore */ }
 
-    // 앱 종료 시: 살아있는 모든 터미널 cwd 의 최근 claude 세션 자동 스탬프
+    const collectLiveCwds = () => this.tabs
+      .filter((t) => !t.exited)
+      .map((t) => t.cwd || t.spawnOpts?.cwd)
+      .filter(Boolean);
+
+    // 앱 종료 시: 살아있는 모든 터미널 cwd 의 최근 claude 세션 자동 스탬프 (best-effort)
     window.addEventListener('beforeunload', () => {
       try {
-        const cwds = this.tabs
-          .filter((t) => !t.exited)
-          .map((t) => t.cwd || t.spawnOpts?.cwd)
-          .filter(Boolean);
+        const cwds = collectLiveCwds();
         if (cwds.length && typeof window.autoStampClaudeSessions === 'function') {
           window.autoStampClaudeSessions(cwds);
         }
       } catch { /* ignore */ }
     });
+
+    // 주기적 자동 스탬프: X로 닫기/강제 리프레시/크래시 대비.
+    // 30초마다 살아있는 터미널들의 cwd 기준으로 최신 claude 세션을 저장해둠.
+    if (!this._autoStampTimer) {
+      const tick = async () => {
+        try {
+          const cwds = collectLiveCwds();
+          if (cwds.length && typeof window.autoStampClaudeSessions === 'function') {
+            await window.autoStampClaudeSessions(cwds);
+          }
+        } catch { /* ignore */ }
+      };
+      tick();
+      this._autoStampTimer = setInterval(tick, 30000);
+    }
   },
 
   async _refreshDeviceShellBtn() {
@@ -669,13 +686,17 @@ const TerminalPanel = {
     this._saveSession();
   },
 
-  closeTab(tab) {
+  async closeTab(tab) {
     const idx = this.tabs.indexOf(tab);
     if (idx < 0) return;
     const wasActive = this.active === tab;
     const lastCwd = tab.cwd || tab.spawnOpts?.cwd || null;
     if (lastCwd && typeof window.autoStampClaudeSessions === 'function') {
-      window.autoStampClaudeSessions([lastCwd]);
+      try {
+        // claude CLI 가 세션 파일을 디스크에 flush 할 시간을 잠깐 줌
+        await new Promise((r) => setTimeout(r, 250));
+        await window.autoStampClaudeSessions([lastCwd]);
+      } catch { /* ignore */ }
     }
     tab.dispose();
     this.tabs.splice(idx, 1);

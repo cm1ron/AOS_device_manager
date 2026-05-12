@@ -77,6 +77,10 @@
       <span class="nav-popover-icon">🧪</span>
       <span class="nav-popover-label">자동화 테스트</span>
     </div>
+    <div class="nav-popover-item" data-panel="figma-link">
+      <span class="nav-popover-icon">🎨</span>
+      <span class="nav-popover-label">Figma Link</span>
+    </div>
     <div class="nav-popover-item" data-panel="analysis">
       <span class="nav-popover-icon">✨</span>
       <span class="nav-popover-label">TC Generator</span>
@@ -199,6 +203,7 @@
       <!-- Device Panel -->
       <div class="panel active" id="panel-device">
         <h2 class="panel-title">디바이스 정보</h2>
+        <div id="device-status-banner" class="device-status-banner" style="display:none"></div>
         <div class="device-layout">
           <div class="device-info-side" id="device-info-content">
             <p style="color:var(--text-muted)">디바이스를 선택하면 정보가 표시됩니다.</p>
@@ -366,6 +371,9 @@
           </div>
         </div>
       </div>
+      <!-- Figma Link Generator -->
+      <div class="panel" id="panel-figma-link" style="padding:0"></div>
+
       <!-- TC Generator (embedded webview) -->
       <div class="panel" id="panel-analysis" style="padding:0">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
@@ -833,6 +841,7 @@
   <script src="panels/bookmarks.js"></script>
   <script src="panels/jira-ticket.js"></script>
   <script src="panels/bvt.js"></script>
+  <script src="panels/figma-link.js"></script>
   <script src="panels/notice-memo.js"></script>
 </body>
 </html>
