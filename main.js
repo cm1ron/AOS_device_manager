@@ -155,6 +155,14 @@ function setupIpcHandlers() {
     catch (e) { return { ok: false, error: e.message, sessions: [] }; }
   });
 
+  ipcMain.handle('file:read-base64', async (_e, filePath) => {
+    try {
+      if (!filePath) return { ok: false, error: 'no path' };
+      const buf = await fs.promises.readFile(filePath);
+      return { ok: true, dataBase64: buf.toString('base64') };
+    } catch (e) { return { ok: false, error: e.message }; }
+  });
+
   ipcMain.handle('shell:open-external', async (_e, url, opts = {}) => {
     if (!url || typeof url !== 'string') return { ok: false, error: 'invalid url' };
     const isWindows = process.platform === 'win32';

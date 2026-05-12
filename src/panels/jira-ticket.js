@@ -198,6 +198,49 @@
     ];
   }
 
+  // 첨부가 PNG 인지 (편집 가능 여부)
+  function isEditableImage(att) {
+    const fn = (att && att.filename) || (att && att.path) || '';
+    return /\.(png|jpe?g)$/i.test(fn);
+  }
+
+  // 첨부의 dataURL 가져오기 (path 만 있으면 base64 로 변환)
+  async function getAttachmentDataURL(att) {
+    if (att.dataBase64) {
+      const mime = /\.jpe?g$/i.test(att.filename || '') ? 'image/jpeg' : 'image/png';
+      return `data:${mime};base64,${att.dataBase64}`;
+    }
+    if (att.path && window.api && window.api.readFileAsBase64) {
+      const r = await window.api.readFileAsBase64(att.path);
+      if (r && r.ok && r.dataBase64) {
+        const mime = /\.jpe?g$/i.test(att.filename || att.path || '') ? 'image/jpeg' : 'image/png';
+        return `data:${mime};base64,${r.dataBase64}`;
+      }
+    }
+    return null;
+  }
+
+  // 첨부 편집 (이미지 에디터 열기 → 저장 시 attList[idx] 교체)
+  async function editAttachment(attList, idx, renderFn) {
+    const att = attList[idx];
+    if (!att || !isEditableImage(att)) return;
+    const dataURL = await getAttachmentDataURL(att);
+    if (!dataURL) { alert('이미지를 불러올 수 없습니다.'); return; }
+    if (!window.App || !window.App.ImageAnnotator) { alert('이미지 에디터가 로드되지 않았습니다.'); return; }
+    window.App.ImageAnnotator.open({
+      dataURL,
+      filename: att.filename || 'edited.png',
+      onSave: (newDataURL, fn) => {
+        const base64 = newDataURL.replace(/^data:image\/\w+;base64,/, '');
+        // 편집된 파일은 항상 png 로 저장 + 파일명에 _edited 접미
+        const baseName = (fn || 'edited').replace(/\.(png|jpe?g)$/i, '');
+        const newFn = `${baseName}_edited.png`;
+        attList[idx] = { filename: newFn, dataBase64: base64 };
+        renderFn();
+      },
+    });
+  }
+
   // 스크린샷 폴더에서 파일 선택 → attList 에 추가
   async function pickFromScreenshotsAndAppend(attList, renderFn) {
     try {
@@ -346,6 +389,15 @@
         const name = document.createElement('span');
         name.textContent = '📎 ' + (a.filename || a.path);
         name.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        row.appendChild(name);
+        if (isEditableImage(a)) {
+          const edit = document.createElement('button');
+          edit.textContent = '✏️';
+          edit.title = '이미지 편집 (마킹/주석)';
+          edit.className = 'img-anno-att-edit';
+          edit.addEventListener('click', () => editAttachment(attList, idx, renderAttachments));
+          row.appendChild(edit);
+        }
         const del = document.createElement('button');
         del.textContent = '✕';
         del.title = '제외';
@@ -353,7 +405,6 @@
         del.addEventListener('mouseenter', () => { del.style.background = 'var(--red)'; del.style.color = '#fff'; });
         del.addEventListener('mouseleave', () => { del.style.background = 'transparent'; del.style.color = 'var(--red)'; });
         del.addEventListener('click', () => { attList.splice(idx, 1); renderAttachments(); });
-        row.appendChild(name);
         row.appendChild(del);
         attEl.appendChild(row);
       });
@@ -411,13 +462,17 @@
             const fb = document.querySelector('.nav-folder[data-folder="issue"]');
             if (fb) fb.classList.add('active');
           }
-          const wv = document.getElementById('jira-webview');
-          if (!wv) { window.api.openExternal(url); return; }
-          try {
-            const p = wv.loadURL(url);
-            if (p && typeof p.catch === 'function') p.catch(() => {});
-          } catch {
-            try { wv.setAttribute('src', url); } catch {}
+          if (window.IssueTabs && window.IssueTabs.openInNewTab) {
+            window.IssueTabs.openInNewTab('jira', url);
+          } else {
+            const wv = document.getElementById('jira-webview');
+            if (!wv) { return; }
+            try {
+              const p = wv.loadURL(url);
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch {
+              try { wv.setAttribute('src', url); } catch {}
+            }
           }
         });
         $('#jct-close-now').addEventListener('click', (e) => { e.preventDefault(); close(); });
@@ -505,6 +560,15 @@
         const name = document.createElement('span');
         name.textContent = '📎 ' + (a.filename || a.path);
         name.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        row.appendChild(name);
+        if (isEditableImage(a)) {
+          const edit = document.createElement('button');
+          edit.textContent = '✏️';
+          edit.title = '이미지 편집 (마킹/주석)';
+          edit.className = 'img-anno-att-edit';
+          edit.addEventListener('click', () => editAttachment(attList, idx, renderAttachments));
+          row.appendChild(edit);
+        }
         const del = document.createElement('button');
         del.textContent = '✕';
         del.title = '제외';
@@ -512,7 +576,6 @@
         del.addEventListener('mouseenter', () => { del.style.background = 'var(--red)'; del.style.color = '#fff'; });
         del.addEventListener('mouseleave', () => { del.style.background = 'transparent'; del.style.color = 'var(--red)'; });
         del.addEventListener('click', () => { attList.splice(idx, 1); renderAttachments(); });
-        row.appendChild(name);
         row.appendChild(del);
         attEl.appendChild(row);
       });
@@ -558,13 +621,17 @@
             const fb = document.querySelector('.nav-folder[data-folder="issue"]');
             if (fb) fb.classList.add('active');
           }
-          const wv = document.getElementById('jira-webview');
-          if (!wv) { window.api.openExternal(url); return; }
-          try {
-            const p = wv.loadURL(url);
-            if (p && typeof p.catch === 'function') p.catch(() => {});
-          } catch {
-            try { wv.setAttribute('src', url); } catch {}
+          if (window.IssueTabs && window.IssueTabs.openInNewTab) {
+            window.IssueTabs.openInNewTab('jira', url);
+          } else {
+            const wv = document.getElementById('jira-webview');
+            if (!wv) { return; }
+            try {
+              const p = wv.loadURL(url);
+              if (p && typeof p.catch === 'function') p.catch(() => {});
+            } catch {
+              try { wv.setAttribute('src', url); } catch {}
+            }
           }
         });
         $('#jrm-close-now').addEventListener('click', (e) => { e.preventDefault(); close(); });

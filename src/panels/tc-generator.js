@@ -166,7 +166,7 @@
       console.warn('[tc-gen] preload path 가져오기 실패', e);
     }
     console.log('[tc-gen] preload URL =', preloadUrl);
-    ['tc-webview', 'orca-webview', 'woodman-webview', 'sable-webview', 'github-webview', 'jira-webview', 'confluence-webview'].forEach((id) => {
+    ['tc-webview', 'orca-webview', 'woodman-webview', 'sable-webview', 'github-webview'].forEach((id) => {
       const wv = document.getElementById(id);
       if (!wv) return;
       const defaultSrc = wv.getAttribute('data-src');
@@ -242,29 +242,11 @@
     bind('woodman');
     bind('sable');
     bind('github');
-    bind('jira');
-    bind('confluence');
+    // jira / confluence 는 issue-tabs.js 에서 탭 시스템으로 관리
     attachPreloadAndLoad();
     setupZoomShortcuts();
 
-    // main process 에서 webview 의 _blank Jira 링크 → Jira 패널로 라우팅
-    try {
-      if (window.api && window.api.onJiraOpenIssue) {
-        window.api.onJiraOpenIssue((url, fromId) => {
-          console.log('[tc-gen] onJiraOpenIssue', url, 'fromId=', fromId);
-          try {
-            const jwv = document.getElementById('jira-webview');
-            if (jwv && fromId != null && typeof jwv.getWebContentsId === 'function') {
-              if (jwv.getWebContentsId() === fromId) {
-                console.log('[tc-gen] skip (jira self-navigate)');
-                return;
-              }
-            }
-          } catch {}
-          routeToJira(url);
-        });
-      }
-    } catch {}
+    // Jira issue 라우팅은 issue-tabs.js 에서 처리
 
     // webview 안에서 발생한 줌 변경(키/휠) → webContents id 로 매핑해서 localStorage 저장
     try {

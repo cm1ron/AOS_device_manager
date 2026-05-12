@@ -490,8 +490,8 @@
         <webview id="sable-webview" data-src="https://sable.ovdr.io/deployer/farms/dev" data-partition="persist:sable" style="flex:1;width:100%;height:100%" allowpopups></webview>
       </div>
 
-      <!-- Jira (embedded webview) -->
-      <div class="panel" id="panel-jira" style="padding:0">
+      <!-- Jira (tabbed webviews) -->
+      <div class="panel site-panel" id="panel-jira" style="padding:0">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
           <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img src="../assets/icon-jira.png" style="width:18px;height:18px;object-fit:contain">Jira</span>
           <span style="font-size:11px;color:var(--text-muted)" id="jira-url-label">https://overdare.atlassian.net/</span>
@@ -502,13 +502,15 @@
           <button class="btn btn-sm" id="jira-forward" title="앞으로">→</button>
           <button class="btn btn-sm" id="jira-open-external" title="브라우저로 열기">↗</button>
         </div>
-        <div class="panel-body" style="flex:1;display:flex;min-height:0">
-          <webview id="jira-webview" data-src="https://overdare.atlassian.net/" data-partition="persist:jira" style="flex:1;height:100%" allowpopups></webview>
+        <div class="site-tabs">
+          <div class="site-tab-list" id="jira-tab-list"></div>
+          <button class="site-tab-add" id="jira-new-tab" title="새 탭">+</button>
         </div>
+        <div class="site-stack" id="jira-stack"></div>
       </div>
 
-      <!-- Confluence (embedded webview) -->
-      <div class="panel" id="panel-confluence" style="padding:0">
+      <!-- Confluence (tabbed webviews) -->
+      <div class="panel site-panel" id="panel-confluence" style="padding:0">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--bg-secondary,#252535)">
           <span style="font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px"><img src="../assets/icon-confluence.png" style="width:18px;height:18px;object-fit:contain">Confluence</span>
           <span style="font-size:11px;color:var(--text-muted)" id="confluence-url-label">https://overdare.atlassian.net/wiki/spaces/NFTMetaverse/pages/32012044/00.+QA</span>
@@ -519,9 +521,11 @@
           <button class="btn btn-sm" id="confluence-forward" title="앞으로">→</button>
           <button class="btn btn-sm" id="confluence-open-external" title="브라우저로 열기">↗</button>
         </div>
-        <div class="panel-body" style="flex:1;display:flex;min-height:0">
-          <webview id="confluence-webview" data-src="https://overdare.atlassian.net/wiki/spaces/NFTMetaverse/pages/32012044/00.+QA" data-partition="persist:confluence" style="flex:1;height:100%" allowpopups></webview>
+        <div class="site-tabs">
+          <div class="site-tab-list" id="confluence-tab-list"></div>
+          <button class="site-tab-add" id="confluence-new-tab" title="새 탭">+</button>
         </div>
+        <div class="site-stack" id="confluence-stack"></div>
       </div>
 
       <!-- GitHub (embedded webview) -->
@@ -851,11 +855,13 @@
   <script src="panels/claude-sessions.js"></script>
   <script src="panels/file-tree.js"></script>
   <script src="panels/sites.js"></script>
+  <script src="panels/issue-tabs.js"></script>
   <script src="panels/webview-find.js"></script>
   <script src="panels/bookmarks.js"></script>
   <script src="panels/jira-ticket.js"></script>
   <script src="panels/bvt.js"></script>
   <script src="panels/figma-link.js"></script>
+  <script src="panels/image-annotator.js"></script>
   <script src="panels/notice-memo.js"></script>
 </body>
 </html>

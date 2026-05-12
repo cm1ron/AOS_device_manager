@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   getFilePath: (file) => webUtils.getPathForFile(file),
   getWebviewPreloadPath: () => ipcRenderer.invoke('app:webview-preload-path'),
   openExternal: (url, opts) => ipcRenderer.invoke('shell:open-external', url, opts),
+  readFileAsBase64: (filePath) => ipcRenderer.invoke('file:read-base64', filePath),
   onMouseNav: (cb) => ipcRenderer.on('mouse-nav', (_e, dir) => cb(dir)),
   onJiraOpenIssue: (cb) => ipcRenderer.on('jira:open-issue', (_e, url, fromId) => cb(url, fromId)),
   onWebviewZoomChanged: (cb) => ipcRenderer.on('webview:zoom-changed', (_e, id, factor) => cb(id, factor)),
