@@ -5,6 +5,10 @@
 (function () {
   const TOKEN_KEY = 'figma-link:token';
   const URL_KEY = 'figma-link:last-url';
+  const PREF_DEPTH_KEY = 'figma-link:depth';
+  const PREF_COMMENTS_KEY = 'figma-link:fetch-comments';
+  const CALLS_LOG_KEY = 'figma-link:calls';
+  const MAX_CALLS_PER_MIN = 5;
 
   const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) || ''; } catch { return ''; } };
   const setToken = (v) => { try { localStorage.setItem(TOKEN_KEY, v || ''); } catch {} };
@@ -32,35 +36,83 @@
   // Figma 의 node-id 는 URL 인코딩 시 ":" → "-" 로 표기 (예: 1:23 → 1-23)
   function nodeIdToParam(id) { return String(id).replace(/:/g, '-'); }
 
-  // 메모리 캐시 (세션 중) + sessionStorage (창 닫기 전까지)
-  const CACHE_TTL_MS = 30 * 60 * 1000; // 30분
+  // 영구 캐시 (localStorage, 6시간 TTL) — 앱 재시작해도 유지
+  const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
   function cacheGet(key) {
     try {
-      const raw = sessionStorage.getItem('figma-link:cache:' + key);
+      const raw = localStorage.getItem('figma-link:cache:' + key);
       if (!raw) return null;
       const obj = JSON.parse(raw);
       if (!obj || (Date.now() - obj.t) > CACHE_TTL_MS) return null;
-      return obj.v;
+      return { ...obj.v, _cachedAt: obj.t };
     } catch { return null; }
   }
   function cacheSet(key, value) {
     try {
-      sessionStorage.setItem('figma-link:cache:' + key, JSON.stringify({ t: Date.now(), v: value }));
-    } catch {}
+      localStorage.setItem('figma-link:cache:' + key, JSON.stringify({ t: Date.now(), v: value }));
+    } catch (e) {
+      // localStorage 용량 초과 시 캐시만 비우고 재시도
+      if (e && /quota/i.test(e.message)) {
+        clearAllCache();
+        try { localStorage.setItem('figma-link:cache:' + key, JSON.stringify({ t: Date.now(), v: value })); } catch {}
+      }
+    }
+  }
+  function clearAllCache() {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('figma-link:cache:')) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+      return keys.length;
+    } catch { return 0; }
+  }
+
+  // 분당 호출 카운터 (클라 측 차단 — 안전장치)
+  function recordCall() {
+    try {
+      const now = Date.now();
+      const arr = JSON.parse(localStorage.getItem(CALLS_LOG_KEY) || '[]').filter((t) => now - t < 60000);
+      arr.push(now);
+      localStorage.setItem(CALLS_LOG_KEY, JSON.stringify(arr));
+      return arr.length;
+    } catch { return 0; }
+  }
+  function recentCallCount() {
+    try {
+      const now = Date.now();
+      const arr = JSON.parse(localStorage.getItem(CALLS_LOG_KEY) || '[]').filter((t) => now - t < 60000);
+      return arr.length;
+    } catch { return 0; }
   }
 
   async function figmaGet(url, token, { retries = 2, onRetry = null } = {}) {
+    // 클라 측 분당 호출 제한
+    if (recentCallCount() >= MAX_CALLS_PER_MIN) {
+      throw new Error(`너무 자주 호출하고 있습니다 (분당 ${MAX_CALLS_PER_MIN}회 제한). 잠시 후 다시 시도하세요.`);
+    }
     let attempt = 0;
     let lastErr = null;
     while (attempt <= retries) {
+      recordCall();
       const res = await fetch(url, { headers: { 'X-Figma-Token': token } });
       if (res.ok) return res.json();
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
-        const waitSec = retryAfter > 0 ? retryAfter : Math.min(60, Math.pow(2, attempt + 1) * 5); // 10s, 20s, 40s ...
+        // Retry-After 가 5분 초과면 hard cooldown 으로 간주 → 재시도 안 함
+        const MAX_AUTO_WAIT = 300;
+        if (retryAfter > MAX_AUTO_WAIT) {
+          const hours = Math.round(retryAfter / 3600 * 10) / 10;
+          throw new Error(
+            `Figma API 429 — 토큰이 ${hours}시간(${retryAfter}s) 동안 차단되었습니다.\n` +
+            `→ 새 PAT 를 발급받아 ⚙️ Token 에서 교체하세요. (https://www.figma.com/settings/tokens)`
+          );
+        }
+        const waitSec = retryAfter > 0 ? retryAfter : Math.min(60, Math.pow(2, attempt + 1) * 5);
         if (attempt >= retries) {
-          const t = await res.text().catch(() => '');
-          throw new Error(`Figma API 429 (Rate limit). 잠시 후 다시 시도하세요. ${t || ''}`.trim());
+          throw new Error(`Figma API 429 (Rate limit). 잠시 후 다시 시도하세요.`);
         }
         if (onRetry) onRetry(waitSec, attempt + 1, retries);
         await new Promise((r) => setTimeout(r, waitSec * 1000));
@@ -74,12 +126,12 @@
     if (lastErr) throw lastErr;
   }
 
-  async function fetchFile(fileKey, token, depth = 3, onRetry = null) {
+  async function fetchFile(fileKey, token, depth = 2, onRetry = null) {
     const cacheKey = `file:${fileKey}:d${depth}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
     const url = `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${depth}`;
-    const data = await figmaGet(url, token, { retries: 2, onRetry });
+    const data = await figmaGet(url, token, { retries: 1, onRetry });
     cacheSet(cacheKey, data);
     return data;
   }
@@ -213,6 +265,18 @@
 
         <div class="figma-input-row">
           <input type="text" id="figma-file-url" class="input" placeholder="Figma 파일 URL 붙여넣기 (예: https://www.figma.com/design/XXXX/MyFile)" style="flex:1">
+          <label class="figma-toggle" title="더 많은 하위 노드를 가져옵니다 (호출 cost 증가)">
+            <span>깊이</span>
+            <select id="figma-depth" class="input" style="padding:2px 4px;font-size:11px;height:24px">
+              <option value="1">1</option>
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+            </select>
+          </label>
+          <label class="figma-toggle" title="코멘트도 같이 불러오기 (호출 1회 추가)">
+            <input type="checkbox" id="figma-fetch-comments"> <span>💬 코멘트</span>
+          </label>
           <button class="btn btn-sm btn-primary" id="figma-load-btn">불러오기</button>
         </div>
 
@@ -274,6 +338,11 @@
     `;
 
     document.getElementById('figma-file-url').value = lastUrl;
+    try {
+      const d = localStorage.getItem(PREF_DEPTH_KEY);
+      if (d) document.getElementById('figma-depth').value = d;
+      document.getElementById('figma-fetch-comments').checked = localStorage.getItem(PREF_COMMENTS_KEY) === '1';
+    } catch {}
     bindEvents();
   }
 
@@ -281,15 +350,14 @@
     const $ = (s) => document.querySelector(s);
     $('#figma-token-btn').addEventListener('click', showTokenDialog);
     $('#figma-cache-clear').addEventListener('click', () => {
-      try {
-        const keys = [];
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const k = sessionStorage.key(i);
-          if (k && k.startsWith('figma-link:cache:')) keys.push(k);
-        }
-        keys.forEach((k) => sessionStorage.removeItem(k));
-        toast(`캐시 ${keys.length}개 비움`, 'success');
-      } catch (e) { toast('캐시 비우기 실패: ' + e.message, 'error'); }
+      const n = clearAllCache();
+      toast(`캐시 ${n}개 비움`, 'success');
+    });
+    $('#figma-depth').addEventListener('change', (e) => {
+      try { localStorage.setItem(PREF_DEPTH_KEY, e.currentTarget.value); } catch {}
+    });
+    $('#figma-fetch-comments').addEventListener('change', (e) => {
+      try { localStorage.setItem(PREF_COMMENTS_KEY, e.currentTarget.checked ? '1' : '0'); } catch {}
     });
     $('#figma-load-btn').addEventListener('click', () => loadFile($('#figma-file-url').value));
     $('#figma-file-url').addEventListener('keydown', (e) => {
@@ -435,11 +503,14 @@
       status.innerHTML = `<span style="color:var(--yellow,#facc15)">⏳ Rate limit · ${waitSec}초 후 재시도 (${attempt}/${max})...</span>`;
     };
 
+    const depth = parseInt(document.getElementById('figma-depth')?.value || '2', 10);
+    const includeComments = document.getElementById('figma-fetch-comments')?.checked;
+
     try {
-      const [data, commentsResp] = await Promise.all([
-        fetchFile(fileKey, token, 3, onRetry),
-        fetchComments(fileKey, token, onRetry),
-      ]);
+      const data = await fetchFile(fileKey, token, depth, onRetry);
+      const commentsResp = includeComments
+        ? await fetchComments(fileKey, token, onRetry)
+        : { comments: [] };
       _state.fileKey = fileKey;
       _state.fileName = data.name || 'file';
       _state.items = buildList(data.document || {});
@@ -455,7 +526,13 @@
       }
 
       const commentTotal = (commentsResp && commentsResp.comments) ? commentsResp.comments.length : 0;
-      status.innerHTML = `<span style="color:var(--green)">✓ ${escHtml(_state.fileName)}</span> · ${_state.items.length} 노드 · 💬 ${commentTotal}개 코멘트`;
+      const cachedAt = data && data._cachedAt;
+      const cacheTag = cachedAt
+        ? `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">📦 캐시 (${Math.round((Date.now() - cachedAt) / 60000)}분 전)</span>`
+        : '';
+      const callsNow = recentCallCount();
+      const callTag = `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">⚡ 분당 ${callsNow}/${MAX_CALLS_PER_MIN}</span>`;
+      status.innerHTML = `<span style="color:var(--green)">✓ ${escHtml(_state.fileName)}</span> · ${_state.items.length} 노드 · 💬 ${commentTotal}${cacheTag}${callTag}`;
       renderPages();
       renderTree();
       renderResult();
