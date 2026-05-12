@@ -32,21 +32,70 @@
   // Figma 의 node-id 는 URL 인코딩 시 ":" → "-" 로 표기 (예: 1:23 → 1-23)
   function nodeIdToParam(id) { return String(id).replace(/:/g, '-'); }
 
-  async function fetchFile(fileKey, token, depth = 3) {
-    const url = `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${depth}`;
-    const res = await fetch(url, { headers: { 'X-Figma-Token': token } });
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(`Figma API ${res.status}: ${t || res.statusText}`);
-    }
-    return res.json();
+  // 메모리 캐시 (세션 중) + sessionStorage (창 닫기 전까지)
+  const CACHE_TTL_MS = 30 * 60 * 1000; // 30분
+  function cacheGet(key) {
+    try {
+      const raw = sessionStorage.getItem('figma-link:cache:' + key);
+      if (!raw) return null;
+      const obj = JSON.parse(raw);
+      if (!obj || (Date.now() - obj.t) > CACHE_TTL_MS) return null;
+      return obj.v;
+    } catch { return null; }
+  }
+  function cacheSet(key, value) {
+    try {
+      sessionStorage.setItem('figma-link:cache:' + key, JSON.stringify({ t: Date.now(), v: value }));
+    } catch {}
   }
 
-  async function fetchComments(fileKey, token) {
+  async function figmaGet(url, token, { retries = 2, onRetry = null } = {}) {
+    let attempt = 0;
+    let lastErr = null;
+    while (attempt <= retries) {
+      const res = await fetch(url, { headers: { 'X-Figma-Token': token } });
+      if (res.ok) return res.json();
+      if (res.status === 429) {
+        const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+        const waitSec = retryAfter > 0 ? retryAfter : Math.min(60, Math.pow(2, attempt + 1) * 5); // 10s, 20s, 40s ...
+        if (attempt >= retries) {
+          const t = await res.text().catch(() => '');
+          throw new Error(`Figma API 429 (Rate limit). 잠시 후 다시 시도하세요. ${t || ''}`.trim());
+        }
+        if (onRetry) onRetry(waitSec, attempt + 1, retries);
+        await new Promise((r) => setTimeout(r, waitSec * 1000));
+        attempt++;
+        continue;
+      }
+      const t = await res.text().catch(() => '');
+      lastErr = new Error(`Figma API ${res.status}: ${t || res.statusText}`);
+      throw lastErr;
+    }
+    if (lastErr) throw lastErr;
+  }
+
+  async function fetchFile(fileKey, token, depth = 3, onRetry = null) {
+    const cacheKey = `file:${fileKey}:d${depth}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
+    const url = `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}?depth=${depth}`;
+    const data = await figmaGet(url, token, { retries: 2, onRetry });
+    cacheSet(cacheKey, data);
+    return data;
+  }
+  async function fetchComments(fileKey, token, onRetry = null) {
+    const cacheKey = `cmt:${fileKey}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) return cached;
     const url = `https://api.figma.com/v1/files/${encodeURIComponent(fileKey)}/comments`;
-    const res = await fetch(url, { headers: { 'X-Figma-Token': token } });
-    if (!res.ok) return { comments: [] };
-    return res.json();
+    try {
+      const data = await figmaGet(url, token, { retries: 1, onRetry });
+      cacheSet(cacheKey, data);
+      return data;
+    } catch (e) {
+      // 코멘트 실패는 트리는 뜨도록 무시
+      return { comments: [], _error: e.message };
+    }
   }
   // 응답을 { nodeId: [comment, ...] } 로 그룹핑
   function groupCommentsByNode(commentsResp) {
@@ -158,6 +207,7 @@
         <div class="figma-toolbar">
           <span class="figma-title">🎨 Figma Link Generator</span>
           <span style="flex:1"></span>
+          <button class="btn btn-sm" id="figma-cache-clear" title="캐시 비우기 (강제 새로고침)">🗑 Cache</button>
           <button class="btn btn-sm" id="figma-token-btn" title="Personal Access Token 설정">⚙️ Token</button>
         </div>
 
@@ -230,6 +280,17 @@
   function bindEvents() {
     const $ = (s) => document.querySelector(s);
     $('#figma-token-btn').addEventListener('click', showTokenDialog);
+    $('#figma-cache-clear').addEventListener('click', () => {
+      try {
+        const keys = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith('figma-link:cache:')) keys.push(k);
+        }
+        keys.forEach((k) => sessionStorage.removeItem(k));
+        toast(`캐시 ${keys.length}개 비움`, 'success');
+      } catch (e) { toast('캐시 비우기 실패: ' + e.message, 'error'); }
+    });
     $('#figma-load-btn').addEventListener('click', () => loadFile($('#figma-file-url').value));
     $('#figma-file-url').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); loadFile($('#figma-file-url').value); }
@@ -363,15 +424,21 @@
 
     setLastUrl(url);
     const status = document.getElementById('figma-status');
+    const loadBtn = document.getElementById('figma-load-btn');
+    if (loadBtn) loadBtn.disabled = true;
     status.innerHTML = '<i>불러오는 중...</i>';
     const tree = document.getElementById('figma-tree');
     tree.innerHTML = '<div class="figma-empty">불러오는 중...</div>';
     document.getElementById('figma-result').innerHTML = '<div class="figma-empty">선택된 노드의 링크가 여기 표시됩니다.</div>';
 
+    const onRetry = (waitSec, attempt, max) => {
+      status.innerHTML = `<span style="color:var(--yellow,#facc15)">⏳ Rate limit · ${waitSec}초 후 재시도 (${attempt}/${max})...</span>`;
+    };
+
     try {
       const [data, commentsResp] = await Promise.all([
-        fetchFile(fileKey, token, 3),
-        fetchComments(fileKey, token).catch(() => ({ comments: [] })),
+        fetchFile(fileKey, token, 3, onRetry),
+        fetchComments(fileKey, token, onRetry),
       ]);
       _state.fileKey = fileKey;
       _state.fileName = data.name || 'file';
@@ -395,6 +462,8 @@
     } catch (e) {
       status.innerHTML = `<span style="color:var(--red)">✗ ${escHtml(e.message)}</span>`;
       tree.innerHTML = '<div class="figma-empty">불러오기 실패</div>';
+    } finally {
+      if (loadBtn) loadBtn.disabled = false;
     }
   }
 
