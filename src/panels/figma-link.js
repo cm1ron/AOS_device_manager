@@ -126,7 +126,7 @@
     if (lastErr) throw lastErr;
   }
 
-  async function fetchFile(fileKey, token, depth = 2, onRetry = null) {
+  async function fetchFile(fileKey, token, depth = 3, onRetry = null) {
     const cacheKey = `file:${fileKey}:d${depth}`;
     const cached = cacheGet(cacheKey);
     if (cached) return cached;
@@ -269,8 +269,8 @@
             <span>깊이</span>
             <select id="figma-depth" class="input" style="padding:2px 4px;font-size:11px;height:24px">
               <option value="1">1</option>
-              <option value="2" selected>2</option>
-              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="3" selected>3</option>
               <option value="4">4</option>
             </select>
           </label>
@@ -503,7 +503,7 @@
       status.innerHTML = `<span style="color:var(--yellow,#facc15)">⏳ Rate limit · ${waitSec}초 후 재시도 (${attempt}/${max})...</span>`;
     };
 
-    const depth = parseInt(document.getElementById('figma-depth')?.value || '2', 10);
+    const depth = parseInt(document.getElementById('figma-depth')?.value || '3', 10);
     const includeComments = document.getElementById('figma-fetch-comments')?.checked;
 
     try {
