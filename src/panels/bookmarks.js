@@ -10,9 +10,23 @@
   function save(site, list) {
     try { localStorage.setItem(key(site), JSON.stringify(list)); } catch {}
   }
-  function getWebview(site) { return document.getElementById(`${site}-webview`); }
+  // jira/confluence 는 IssueTabs(탭 시스템)으로 관리됨 → 활성 탭 webview 사용
+  function getWebview(site) {
+    if (window.IssueTabs && window.IssueTabs.activeWebview) {
+      const wv = window.IssueTabs.activeWebview(site);
+      if (wv) return wv;
+    }
+    return document.getElementById(`${site}-webview`);
+  }
   function getUrlLabel(site) { return document.getElementById(`${site}-url-label`); }
   function navigate(site, url) {
+    // 즐겨찾기 클릭 → 새 탭으로 열기 (탭 시스템 있을 때)
+    if (window.IssueTabs && window.IssueTabs.openInNewTab && (site === 'jira' || site === 'confluence')) {
+      window.IssueTabs.openInNewTab(site, url);
+      const lbl = getUrlLabel(site);
+      if (lbl) lbl.textContent = url;
+      return;
+    }
     const wv = getWebview(site);
     if (!wv) return;
     try {
@@ -26,20 +40,43 @@
   function ensureDrawer(site) {
     let drawer = document.getElementById(`bookmark-drawer-${site}`);
     if (drawer) return drawer;
-    const wv = getWebview(site);
-    if (!wv || !wv.parentElement) return null;
+    // jira/confluence 는 panel 안의 stack 옆에 붙임 (탭 전환에 영향 없도록)
+    const stack = document.getElementById(`${site}-stack`);
+    const panel = document.getElementById(`panel-${site}`);
+    let host = null;
+    if (stack && stack.parentElement) {
+      host = stack.parentElement;
+      // stack 자체가 flex item 이라 옆에 두려면 stack 도 row flex 필요
+      // 가장 안전한 건 stack 을 감싸는 row 를 만들거나, stack 부모(=panel)에 row 적용
+      // 여기선 stack 의 부모(=panel)에 row 자식 wrapper 만듦
+      let row = host.querySelector(`#${site}-stack-row`);
+      if (!row) {
+        row = document.createElement('div');
+        row.id = `${site}-stack-row`;
+        row.style.cssText = 'flex:1;display:flex;min-height:0;';
+        host.insertBefore(row, stack);
+        row.appendChild(stack);
+        host = row;
+      } else {
+        host = row;
+      }
+    } else {
+      const wv = getWebview(site);
+      if (!wv || !wv.parentElement) return null;
+      host = wv.parentElement;
+    }
     drawer = document.createElement('aside');
     drawer.id = `bookmark-drawer-${site}`;
     drawer.className = 'bookmark-drawer';
     drawer.style.cssText = `
       width: 280px; flex: 0 0 280px;
-      background: #1e1e2e; color: #cdd6f4;
-      border-left: 1px solid #313244;
+      background: var(--bg-secondary, #1e1e2e); color: var(--text-primary, #cdd6f4);
+      border-left: 1px solid var(--border, #313244);
       display: none; flex-direction: column;
       box-shadow: -4px 0 16px rgba(0,0,0,0.3);
     `;
     drawer.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #313244">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border,#313244)">
         <span style="font-size:13px;font-weight:600">⭐ 즐겨찾기</span>
         <div style="flex:1"></div>
         <button class="bm-add btn btn-sm btn-primary" title="현재 페이지 추가">+ 추가</button>
@@ -47,7 +84,7 @@
       </div>
       <div class="bm-list" style="flex:1;overflow-y:auto;padding:6px"></div>
     `;
-    wv.parentElement.appendChild(drawer);
+    host.appendChild(drawer);
     drawer.querySelector('.bm-close').addEventListener('click', () => closeDrawer(site));
     drawer.querySelector('.bm-add').addEventListener('click', (e) => addCurrent(site, e.currentTarget));
     return drawer;
