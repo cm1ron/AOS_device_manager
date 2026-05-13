@@ -108,9 +108,8 @@
       } catch {}
     });
 
-    wv.addEventListener('console-message', (e) => {
-      if (e && e.message) console.log(`[${prefix}-wv]`, e.message);
-    });
+    // 디버그가 필요할 때만 켜기 (woodman msal 등 도배 방지)
+    // wv.addEventListener('console-message', (e) => { if (e && e.message) console.log(`[${prefix}-wv]`, e.message); });
 
     reload && reload.addEventListener('click', () => { try { wv.reload(); } catch {} });
     back && back.addEventListener('click', () => { try { if (wv.canGoBack()) wv.goBack(); } catch {} });

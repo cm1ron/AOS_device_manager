@@ -58,8 +58,6 @@
       const wantedBases = new Set(wantedList.map(baseOf).filter(Boolean));
       const seenCwd = new Set();
       let n = 0;
-      console.log('[autoStamp] wanted=', wantedList, 'wantedBases=', [...wantedBases],
-        'sessions(top5)=', res.sessions.slice(0, 5).map((s) => ({ id: s.id, proj: s.project, path: s.projectPath, mtime: s.mtime })));
       for (const s of res.sessions) {
         const np = normPath(s.projectPath);
         const base = baseOf(np);
@@ -74,7 +72,6 @@
         add(s.id, s.projectPath);
         n++;
       }
-      console.log('[autoStamp] saved=', n);
       return n;
     } catch (e) { console.warn('[autoStamp] error', e); return 0; }
   };
