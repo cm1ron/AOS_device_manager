@@ -26,6 +26,7 @@
     activeId = n.id;
     save();
   }
+
   if (!notes.find((n) => n.id === activeId)) activeId = notes[0].id;
 
   renderList();

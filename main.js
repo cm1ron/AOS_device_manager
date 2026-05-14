@@ -1110,6 +1110,290 @@ ipcMain.handle('webview:exec-js', async (_e, webContentsId, code) => {
   } catch (e) { return { success: false, error: e.message }; }
 });
 
+// ==========================================================================
+// OVERDARE Install (Firebase App Distribution via GitHub Actions)
+// ==========================================================================
+const https = require('https');
+const AdmZip = require('adm-zip');
+
+const QA_AUTOMATION_OWNER = 'sbx';
+const QA_AUTOMATION_REPO = 'qa-automation';
+const QA_AUTOMATION_API_BASE = 'https://github.krafton.com/api/v3';
+const WORKFLOW_LIST = 'list-firebase-releases.yml';
+const WORKFLOW_GET_URL = 'get-firebase-download-url.yml';
+
+function ghHttpRequest(method, urlOrPath, token, { body, raw } = {}) {
+  return new Promise((resolve, reject) => {
+    const url = urlOrPath.startsWith('http') ? new URL(urlOrPath) : new URL(QA_AUTOMATION_API_BASE + urlOrPath);
+    const opts = {
+      method,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      headers: {
+        'User-Agent': 'QA-Manager',
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${token}`,
+      },
+    };
+    if (body) {
+      const buf = Buffer.from(JSON.stringify(body));
+      opts.headers['Content-Type'] = 'application/json';
+      opts.headers['Content-Length'] = buf.length;
+    }
+    const req = https.request(opts, (res) => {
+      // Follow redirect (artifact download returns 302 to S3-like URL)
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        return resolve(ghHttpRequestRaw('GET', res.headers.location));
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        if (raw) {
+          if (res.statusCode >= 200 && res.statusCode < 300) return resolve({ statusCode: res.statusCode, body: buf, headers: res.headers });
+          return reject(new Error(`HTTP ${res.statusCode}: ${buf.toString('utf8').slice(0, 300)}`));
+        }
+        const text = buf.toString('utf8');
+        let json;
+        try { json = text ? JSON.parse(text) : {}; } catch { json = { _raw: text }; }
+        if (res.statusCode >= 200 && res.statusCode < 300) return resolve({ statusCode: res.statusCode, body: json, headers: res.headers });
+        reject(new Error(`HTTP ${res.statusCode}: ${text.slice(0, 300)}`));
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+function ghHttpRequestRaw(method, fullUrl, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(fullUrl);
+    const opts = {
+      method,
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: url.pathname + url.search,
+      headers: { 'User-Agent': 'QA-Manager', ...headers },
+    };
+    const req = https.request(opts, (res) => {
+      if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+        res.resume();
+        return resolve(ghHttpRequestRaw(method, res.headers.location, headers));
+      }
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const buf = Buffer.concat(chunks);
+        if (res.statusCode >= 200 && res.statusCode < 300) return resolve({ statusCode: res.statusCode, body: buf, headers: res.headers });
+        reject(new Error(`HTTP ${res.statusCode}: ${buf.toString('utf8').slice(0, 300)}`));
+      });
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+function downloadFileWithProgress(fullUrl, destPath, onProgress) {
+  return new Promise((resolve, reject) => {
+    const tryGet = (urlStr, redirectsLeft = 5) => {
+      const url = new URL(urlStr);
+      const opts = {
+        method: 'GET',
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: url.pathname + url.search,
+        headers: { 'User-Agent': 'QA-Manager' },
+      };
+      const req = https.request(opts, (res) => {
+        if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume();
+          if (redirectsLeft <= 0) return reject(new Error('Too many redirects'));
+          return tryGet(res.headers.location, redirectsLeft - 1);
+        }
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          res.resume();
+          return reject(new Error(`HTTP ${res.statusCode}`));
+        }
+        const total = Number(res.headers['content-length'] || 0);
+        let downloaded = 0;
+        const out = fs.createWriteStream(destPath);
+        res.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (onProgress) onProgress({ downloaded, total });
+        });
+        res.pipe(out);
+        out.on('finish', () => out.close(() => resolve({ size: downloaded })));
+        out.on('error', reject);
+      });
+      req.on('error', reject);
+      req.end();
+    };
+    tryGet(fullUrl);
+  });
+}
+
+async function pollWorkflowRun(token, runId, { timeoutMs = 5 * 60 * 1000, intervalMs = 3000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const { body } = await ghHttpRequest('GET', `/repos/${QA_AUTOMATION_OWNER}/${QA_AUTOMATION_REPO}/actions/runs/${runId}`, token);
+    if (body.status === 'completed') return body;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error('Workflow run timed out');
+}
+
+// Trigger a workflow_dispatch and return the new run id (best-effort match by created_at)
+async function triggerWorkflow(token, workflowFile, inputs) {
+  const triggerTime = new Date(Date.now() - 5000).toISOString();
+  await ghHttpRequest('POST', `/repos/${QA_AUTOMATION_OWNER}/${QA_AUTOMATION_REPO}/actions/workflows/${workflowFile}/dispatches`, token, {
+    body: { ref: 'master', inputs },
+  });
+  // GitHub doesn't return the new run id; poll the runs list briefly until we find a fresh one
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const { body } = await ghHttpRequest('GET', `/repos/${QA_AUTOMATION_OWNER}/${QA_AUTOMATION_REPO}/actions/workflows/${workflowFile}/runs?per_page=10&event=workflow_dispatch`, token);
+    const fresh = (body.workflow_runs || []).find((r) => new Date(r.created_at).getTime() >= new Date(triggerTime).getTime());
+    if (fresh) return fresh.id;
+  }
+  throw new Error('Could not locate triggered workflow run');
+}
+
+async function downloadArtifactJson(token, runId, artifactName) {
+  const { body } = await ghHttpRequest('GET', `/repos/${QA_AUTOMATION_OWNER}/${QA_AUTOMATION_REPO}/actions/runs/${runId}/artifacts`, token);
+  const art = (body.artifacts || []).find((a) => a.name === artifactName);
+  if (!art) throw new Error(`Artifact "${artifactName}" not found in run ${runId}`);
+  const dl = await ghHttpRequestRaw('GET', art.archive_download_url, {
+    'User-Agent': 'QA-Manager',
+    'Accept': 'application/vnd.github+json',
+    'Authorization': `Bearer ${token}`,
+  });
+  const zip = new AdmZip(dl.body);
+  const entries = zip.getEntries();
+  const jsonEntry = entries.find((e) => e.entryName.endsWith('.json')) || entries[0];
+  if (!jsonEntry) throw new Error('Artifact zip is empty');
+  return JSON.parse(jsonEntry.getData().toString('utf8'));
+}
+
+ipcMain.handle('overdare:list-releases', async (event, { token, variant = 'dev', pageSize = 30 }) => {
+  try {
+    if (!token) return { success: false, error: 'GitHub PAT 가 설정되지 않았습니다 (⚙️ 설정).' };
+    const send = (msg) => event.sender.send('overdare:progress', { stage: 'list', message: msg });
+    send('워크플로우 트리거 중...');
+    const runId = await triggerWorkflow(token, WORKFLOW_LIST, { variant, page_size: String(pageSize) });
+    send(`러너 실행 중 (run #${runId})...`);
+    const run = await pollWorkflowRun(token, runId);
+    if (run.conclusion !== 'success') return { success: false, error: `워크플로우 실패 (${run.conclusion}). Run #${runId}` };
+    send('artifact 다운로드 중...');
+    const json = await downloadArtifactJson(token, runId, 'releases');
+    return { success: true, runId, ...json };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('overdare:get-download-url', async (event, { token, variant, releaseId }) => {
+  try {
+    if (!token) return { success: false, error: 'GitHub PAT 가 설정되지 않았습니다.' };
+    if (!releaseId) return { success: false, error: 'releaseId 필요' };
+    const send = (msg) => event.sender.send('overdare:progress', { stage: 'url', message: msg });
+    send('워크플로우 트리거 중...');
+    const runId = await triggerWorkflow(token, WORKFLOW_GET_URL, { variant, release_id: releaseId });
+    send(`러너 실행 중 (run #${runId})...`);
+    const run = await pollWorkflowRun(token, runId);
+    if (run.conclusion !== 'success') return { success: false, error: `워크플로우 실패 (${run.conclusion}).` };
+    send('서명 URL 수신 중...');
+    const json = await downloadArtifactJson(token, runId, 'download');
+    return { success: true, runId, ...json };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+ipcMain.handle('overdare:download-and-install', async (event, { serial, serials, downloadUri, fileName, packageName }) => {
+  try {
+    const targets = (serials && Array.isArray(serials) && serials.length) ? serials : (serial ? [serial] : []);
+    if (!targets.length) return { success: false, error: '디바이스가 선택되지 않았습니다.' };
+    if (!downloadUri) return { success: false, error: '다운로드 URL 이 없습니다.' };
+    const tmpDir = path.join(app.getPath('userData'), 'apk-cache');
+    if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+    const safeName = (fileName || `overdare-${Date.now()}.apk`).replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const apkPath = path.join(tmpDir, safeName);
+    const sendDl = (payload) => event.sender.send('overdare:progress', { stage: 'download', ...payload });
+    const sendDev = (s, payload) => event.sender.send('overdare:progress', { stage: 'install', serial: s, ...payload });
+
+    sendDl({ message: 'APK 다운로드 시작', percent: 0 });
+    await downloadFileWithProgress(downloadUri, apkPath, ({ downloaded, total }) => {
+      const percent = total ? Math.round((downloaded / total) * 100) : 0;
+      sendDl({ message: `APK 다운로드 ${percent}%`, percent, downloaded, total });
+    });
+    sendDl({ message: 'APK 다운로드 완료', percent: 100 });
+
+    // Install in parallel on all selected devices
+    const perDevice = await Promise.all(targets.map(async (s) => {
+      try {
+        if (packageName) {
+          sendDev(s, { message: `기존 ${packageName} 삭제 중...`, percent: 30 });
+          try { await adb.uninstallPackage(s, packageName); } catch { /* ignore */ }
+        }
+        sendDev(s, { message: 'ADB install 진행 중...', percent: 60 });
+        const installResult = await adb.installApk(s, apkPath);
+        if (!installResult || installResult.success === false) {
+          const errMsg = installResult && installResult.output ? installResult.output : 'unknown';
+          sendDev(s, { message: `✗ 설치 실패: ${errMsg}`, percent: 100, ok: false });
+          return { serial: s, success: false, error: errMsg };
+        }
+        sendDev(s, { message: '✓ 설치 완료', percent: 100, ok: true });
+        return { serial: s, success: true };
+      } catch (e) {
+        sendDev(s, { message: `✗ ${e.message}`, percent: 100, ok: false });
+        return { serial: s, success: false, error: e.message };
+      }
+    }));
+
+    const allOk = perDevice.every((r) => r.success);
+    return { success: allOk, apkPath, perDevice };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Query installed OVERDARE versions on a set of devices for both packages
+ipcMain.handle('overdare:get-installed-versions', async (_e, { serials }) => {
+  try {
+    const list = Array.isArray(serials) ? serials : [];
+    const PKGS = ['com.overdare.overdare.dev', 'com.overdare.overdare'];
+    const out = {};
+    await Promise.all(list.map(async (s) => {
+      out[s] = {};
+      await Promise.all(PKGS.map(async (pkg) => {
+        try {
+          const v = await adb.getPackageVersion(s, pkg);
+          out[s][pkg] = v || null;
+        } catch { out[s][pkg] = null; }
+      }));
+    }));
+    return { success: true, versions: out };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+});
+
+// Settings (PAT) — store under userData/config/settings.json under key `overdare`
+ipcMain.handle('overdare:get-settings', () => {
+  const cfg = loadConfig();
+  const o = cfg.overdare || {};
+  return { token: o.token || '', variant: o.variant || 'dev' };
+});
+ipcMain.handle('overdare:save-settings', (_e, settings) => {
+  const cfg = loadConfig();
+  cfg.overdare = { ...(cfg.overdare || {}), ...(settings || {}) };
+  saveConfig(cfg);
+  return { success: true };
+});
+
 app.whenReady().then(() => {
   createWindow();
   setupIpcHandlers();

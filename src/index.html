@@ -66,7 +66,7 @@
     </div>
     <div class="nav-popover-item" data-panel="apps">
       <span class="nav-popover-icon">📦</span>
-      <span class="nav-popover-label">App Manager</span>
+      <span class="nav-popover-label">Install App</span>
     </div>
   </div>
 
@@ -213,17 +213,47 @@
         </div>
       </div>
 
-      <!-- Apps Panel -->
+      <!-- Install App Panel (OVERDARE Firebase builds) -->
       <div class="panel" id="panel-apps">
-        <h2 class="panel-title">앱 관리</h2>
-        <div class="drop-zone" id="apk-drop-zone">
-          APK 파일을 드래그하거나 클릭 — 패키지 선택 시 클린 설치 (삭제→재설치)
+        <div class="overdare-header">
+          <h2 class="panel-title" style="margin:0;">Install App — OVERDARE</h2>
+          <button class="btn btn-sm" id="overdare-settings" title="GitHub PAT 설정">⚙️</button>
         </div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;">
-          <input class="input" id="package-search" placeholder="패키지 검색..." style="flex:1">
-          <button class="btn btn-sm" id="refresh-packages">새로고침</button>
+        <div class="overdare-column overdare-devices-column">
+          <div class="overdare-col-head">
+            <span class="overdare-col-title">설치 대상</span>
+            <span class="overdare-col-pkg">선택된 디바이스에 빌드 설치</span>
+            <span class="overdare-col-count" id="overdare-devices-count">0</span>
+            <button class="btn btn-sm overdare-col-refresh" id="overdare-devices-all" title="전체 선택/해제" style="font-size:11px;">전체</button>
+          </div>
+          <div class="overdare-devices-list" id="overdare-devices-list">
+            <span class="overdare-devices-empty">연결된 디바이스 없음</span>
+          </div>
         </div>
-        <div class="package-list" id="package-list"></div>
+        <div class="overdare-toolbar">
+          <input class="input" id="overdare-search" placeholder="버전/노트 검색..." style="flex:1">
+        </div>
+        <div class="overdare-status" id="overdare-status">설정 후 각 컬럼의 "새로고침"을 눌러주세요.</div>
+        <div class="overdare-columns">
+          <div class="overdare-column">
+            <div class="overdare-col-head">
+              <span class="overdare-col-title">dev</span>
+              <span class="overdare-col-pkg">com.overdare.overdare.dev</span>
+              <span class="overdare-col-count" id="overdare-count-dev"></span>
+              <button class="btn btn-sm btn-primary overdare-col-refresh" data-variant="dev" title="dev 목록 새로고침">↻</button>
+            </div>
+            <div class="overdare-list" id="overdare-list-dev"></div>
+          </div>
+          <div class="overdare-column">
+            <div class="overdare-col-head">
+              <span class="overdare-col-title">shipping</span>
+              <span class="overdare-col-pkg">com.overdare.overdare</span>
+              <span class="overdare-col-count" id="overdare-count-shipping"></span>
+              <button class="btn btn-sm btn-primary overdare-col-refresh" data-variant="shipping" title="shipping 목록 새로고침">↻</button>
+            </div>
+            <div class="overdare-list" id="overdare-list-shipping"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Logcat Panel -->
@@ -774,6 +804,31 @@
               </div>
 
               <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
+                <div><span class="notice-tag new">신규</span><strong>Install App — OVERDARE 자동 설치</strong></div>
+                <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">
+                  Firebase App Distribution 의 dev / shipping 빌드를 선택해 연결된 디바이스에 자동 설치하는 패널입니다.
+                </p>
+                <ol style="margin:4px 0 4px 22px;padding:0;line-height:1.7">
+                  <li>좌측 메뉴 → <b>모니터링 → Install App</b> 진입</li>
+                  <li>최초 1회: 우측 상단 <b>⚙️</b> → GitHub Enterprise PAT 입력 후 저장
+                    <ul style="margin:2px 0 2px 18px;padding:0">
+                      <li>발급: <a href="https://github.krafton.com/settings/tokens">github.krafton.com/settings/tokens</a></li>
+                      <li>Generate new token (classic) → Scopes: <b>repo</b>, <b>workflow</b> 체크</li>
+                    </ul>
+                  </li>
+                  <li><b>설치 대상</b> 영역에서 디바이스 토글로 다중 선택 (전체 버튼으로 일괄 토글)</li>
+                  <li><b>DEV / SHIPPING</b> 컬럼의 <b>↻</b> 버튼으로 빌드 목록 새로고침 (러너 실행 포함 30~90초 소요)</li>
+                  <li>원하는 빌드 카드의 <b>설치</b> 버튼 클릭
+                    <ul style="margin:2px 0 2px 18px;padding:0">
+                      <li>APK 1회 다운로드 → 선택된 모든 디바이스에 병렬로 클린 설치 (기존 앱 삭제 후 설치)</li>
+                      <li>완료 시 카드 옆에 ✓ 디바이스명 표시 (현재 어떤 디바이스에 깔린 빌드인지 한눈에 확인)</li>
+                    </ul>
+                  </li>
+                </ol>
+                <p style="margin:4px 0 0;font-size:11px;color:var(--text-muted)">💾 빌드 목록은 캐시되어 앱 재시작 후에도 유지됩니다.</p>
+              </div>
+
+              <div class="notice-item" style="flex-direction:column;align-items:flex-start;gap:6px">
                 <div><span class="notice-tag new">신규</span><strong>설정 (다크/라이트 모드 · 알림)</strong></div>
                 <ul style="margin:4px 0 4px 22px;padding:0;line-height:1.6">
                   <li>좌측 하단 ⚙️ 아이콘 → 다크/라이트 모드 전환, Notification 패널 이동</li>
@@ -863,5 +918,28 @@
   <script src="panels/figma-link.js"></script>
   <script src="panels/image-annotator.js"></script>
   <script src="panels/notice-memo.js"></script>
+
+  <!-- OVERDARE Settings Modal (kept at body level so it doesn't interfere with panel/popover layout) -->
+  <div class="modal-backdrop" id="overdare-settings-modal" style="display:none;">
+    <div class="modal" style="max-width:520px;">
+      <div class="modal-head">
+        <div class="modal-title">OVERDARE Install 설정</div>
+        <button class="btn btn-sm" id="overdare-settings-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <label>GitHub Enterprise PAT (github.krafton.com)</label>
+          <input type="password" class="input" id="overdare-token" placeholder="ghp_..." />
+          <small style="color:var(--muted);display:block;margin-top:4px;">
+            qa-automation 레포에 <code>workflow</code> / <code>repo</code> 권한 필요.
+          </small>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" id="overdare-settings-cancel">취소</button>
+        <button class="btn btn-primary" id="overdare-settings-save">저장</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

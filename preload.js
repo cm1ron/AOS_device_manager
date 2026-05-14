@@ -161,4 +161,18 @@ contextBridge.exposeInMainWorld('api', {
   crashTest: () => ipcRenderer.invoke('crash:test'),
   crashSetWatchedApp: (pkg) => ipcRenderer.invoke('crash:set-watched-app', pkg),
   crashRestartMonitor: (serial) => ipcRenderer.invoke('crash:restart-monitor', serial),
+
+  overdare: {
+    listReleases: (opts) => ipcRenderer.invoke('overdare:list-releases', opts),
+    getDownloadUrl: (opts) => ipcRenderer.invoke('overdare:get-download-url', opts),
+    downloadAndInstall: (opts) => ipcRenderer.invoke('overdare:download-and-install', opts),
+    getInstalledVersions: (opts) => ipcRenderer.invoke('overdare:get-installed-versions', opts),
+    getSettings: () => ipcRenderer.invoke('overdare:get-settings'),
+    saveSettings: (s) => ipcRenderer.invoke('overdare:save-settings', s),
+    onProgress: (cb) => {
+      const handler = (_e, payload) => cb(payload);
+      ipcRenderer.on('overdare:progress', handler);
+      return () => ipcRenderer.removeListener('overdare:progress', handler);
+    },
+  },
 });

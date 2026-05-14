@@ -229,9 +229,7 @@ const App = {
     if (panel) panel.classList.add('active');
     this.currentPanel = name;
 
-    if (name === 'apps' && this.currentDevice && typeof AppsPanel !== 'undefined' && !AppsPanel.packages.length) {
-      AppsPanel.loadPackages();
-    }
+    // (apps panel 은 OVERDARE 빌드 리스트 패널로 교체됨 — 자동 로드 없음, 사용자가 "목록 새로고침" 명시적으로 누름)
     if (name === 'bvt' && window.BvtPanel) {
       BvtPanel.init().then(() => BvtPanel.refreshDevices());
     }
