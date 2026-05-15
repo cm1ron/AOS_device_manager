@@ -11,7 +11,7 @@
       label: 'Jira',
       icon: '<img src="../assets/icon-jira.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle">',
       defaultUrl: 'https://overdare.atlassian.net/',
-      partition: 'persist:jira',
+      partition: 'persist:krafton-sso',
       // 같은 사이트로 간주할 호스트
       isSameSite: (h) => /(^|\.)atlassian\.net$/i.test(h),
     },
@@ -19,7 +19,7 @@
       label: 'Confluence',
       icon: '<img src="../assets/icon-confluence.png" style="width:16px;height:16px;object-fit:contain;vertical-align:middle">',
       defaultUrl: 'https://overdare.atlassian.net/wiki/spaces/NFTMetaverse/pages/32012044/00.+QA',
-      partition: 'persist:confluence',
+      partition: 'persist:krafton-sso',
       isSameSite: (h) => /(^|\.)atlassian\.net$/i.test(h),
     },
   };

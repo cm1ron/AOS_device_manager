@@ -179,9 +179,8 @@
     wv.setAttribute('allowpopups', '');
     wv.setAttribute('useragent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36');
     if (window.attachWebviewReloadShortcut) window.attachWebviewReloadShortcut(wv);
-    // partition: dev 는 env 별로, staging/live 는 종류별로 (탭 여러 개여도 같은 세션 공유)
-    const partKey = kind === 'dev' ? `${site}-dev-${tab.env}` : `${site}-${kind}`;
-    wv.setAttribute('partition', `persist:${partKey}`);
+    // partition 통일 (krafton-sso): MS SSO 한 번 로그인하면 모든 사이트 자동 로그인
+    wv.setAttribute('partition', 'persist:krafton-sso');
     if (preloadUrl) wv.setAttribute('preload', preloadUrl);
 
     const initialUrl = kind === 'dev' ? SITES[site].dev.template(tab.env) : SITES[site][kind].url;
