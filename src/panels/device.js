@@ -224,7 +224,10 @@ const DevicePanel = {
     if (!App.currentDevice) return null;
     try {
       const fg = await window.api.getForegroundPkg(App.currentDevice);
-      if (fg && APP_PKGS.includes(fg)) return fg;
+      if (fg && APP_PKGS.includes(fg)) {
+        try { window.MirrorPkgMemory && window.MirrorPkgMemory.rememberLastOverdarePkg(App.currentDevice, fg); } catch {}
+        return fg;
+      }
     } catch {}
     try {
       const pkgs = await window.api.listPackages(App.currentDevice);

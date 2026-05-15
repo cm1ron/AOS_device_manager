@@ -269,17 +269,57 @@
     setTimeout(hookSwitchPanel, 100);
     setTimeout(hookSwitchPanel, 500);
 
-    document.querySelectorAll('.github-quicklink').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const url = btn.dataset.url;
-        const wv = document.getElementById('github-webview');
+    const GH_LAST_URL_KEY = 'github.lastUrl';
+    const GH_DEFAULT_URL = 'https://github.krafton.com/sbx/qa-automation/releases';
+    // 1회성 마이그레이션: 이전 default(`/sbx/qa-automation`)가 마지막으로 저장돼 있으면 새 default로 교체
+    try {
+      const _last = localStorage.getItem(GH_LAST_URL_KEY);
+      if (!_last || /\/sbx\/qa-automation\/?$/.test(_last)) {
+        localStorage.setItem(GH_LAST_URL_KEY, GH_DEFAULT_URL);
+      }
+    } catch {}
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target && e.target.closest && e.target.closest('.github-quicklink');
+      if (!btn) return;
+      const url = btn.dataset.url;
+      if (!url) return;
+      const wv = document.getElementById('github-webview');
+      const lbl = document.getElementById('github-url-label');
+      if (wv) {
+        try {
+          const p = wv.loadURL(url);
+          if (p && typeof p.catch === 'function') p.catch(() => { try { wv.src = url; } catch {} });
+        } catch { try { wv.src = url; } catch {} }
+      }
+      if (lbl) lbl.textContent = url;
+    }, true);
+
+    // GitHub webview: 마지막 방문 URL 기억 → 패널 진입 시 복원
+    const gwv = document.getElementById('github-webview');
+    if (gwv) {
+      const saveUrl = (u) => {
+        if (!u || !/^https?:/.test(u)) return;
+        try { localStorage.setItem(GH_LAST_URL_KEY, u); } catch {}
         const lbl = document.getElementById('github-url-label');
-        if (wv && url) {
-          navigateInWebview(wv, url);
-          if (lbl) lbl.textContent = url;
+        if (lbl) lbl.textContent = u;
+      };
+      gwv.addEventListener('did-navigate', (e) => saveUrl(e.url));
+      gwv.addEventListener('did-navigate-in-page', (e) => saveUrl(e.url));
+      gwv.addEventListener('dom-ready', () => {
+        // 첫 dom-ready 시 마지막 URL 있으면 그쪽으로, 아니면 default
+        if (gwv.dataset._restored) return;
+        gwv.dataset._restored = '1';
+        let target = GH_DEFAULT_URL;
+        try { target = localStorage.getItem(GH_LAST_URL_KEY) || GH_DEFAULT_URL; } catch {}
+        const cur = gwv.getURL ? gwv.getURL() : '';
+        if (target && target !== cur) {
+          try { gwv.loadURL(target); } catch {}
         }
+        const lbl = document.getElementById('github-url-label');
+        if (lbl) lbl.textContent = target;
       });
-    });
+    }
     try {
       localStorage.removeItem('tc-dark-mode');
       localStorage.removeItem('orca-dark-mode');

@@ -144,6 +144,8 @@ contextBridge.exposeInMainWorld('api', {
   writeFile: (p, content) => ipcRenderer.invoke('fs:write-file', p, content),
 
   pullAllLogs: (serial, remotePaths, opts) => ipcRenderer.invoke('adb:pull-all-logs', serial, remotePaths, opts),
+  createLogSession: () => ipcRenderer.invoke('logs:create-session'),
+  copyFile: (src, destDirOrPath) => ipcRenderer.invoke('fs:copy-file', src, destDirOrPath),
   openFolder: (folderPath) => ipcRenderer.invoke('shell:open-folder', folderPath),
   openLogsTodayFolder: () => ipcRenderer.invoke('logs:open-today-folder'),
   saveScreenshot: (base64Data) => ipcRenderer.invoke('adb:save-screenshot', base64Data),

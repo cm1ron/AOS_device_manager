@@ -1,4 +1,5 @@
 const APP_PKGS_MIRROR = ['com.overdare.overdare.dev', 'com.overdare.overdare'];
+const LAST_PKG_KEY = 'mirror.lastOverdarePkg'; // { [serial]: pkg }
 
 function getLogPaths(pkg) {
   return {
@@ -6,6 +7,26 @@ function getLogPaths(pkg) {
     meta: `/sdcard/Android/data/${pkg}/files/UnrealGame/Meta/Meta/Saved/Logs`,
   };
 }
+
+function _readLastPkgMap() {
+  try { return JSON.parse(localStorage.getItem(LAST_PKG_KEY) || '{}'); } catch { return {}; }
+}
+function _writeLastPkgMap(m) {
+  try { localStorage.setItem(LAST_PKG_KEY, JSON.stringify(m)); } catch {}
+}
+function rememberLastOverdarePkg(serial, pkg) {
+  if (!serial || !pkg || !APP_PKGS_MIRROR.includes(pkg)) return;
+  const m = _readLastPkgMap();
+  if (m[serial] === pkg) return;
+  m[serial] = pkg;
+  _writeLastPkgMap(m);
+}
+function getLastOverdarePkg(serial) {
+  if (!serial) return null;
+  return _readLastPkgMap()[serial] || null;
+}
+// 외부(예: device.js) 에서 호출 가능하도록 노출
+window.MirrorPkgMemory = { rememberLastOverdarePkg, getLastOverdarePkg, APP_PKGS_MIRROR };
 
 const MirrorInspector = {
   mirroring: false,
@@ -1166,32 +1187,68 @@ const MirrorInspector = {
   async pullAllBoth() {
     if (!App.currentDevice) return App.toast('디바이스를 먼저 연결해주세요', 'error');
 
-    let pkg = null;
-    try {
-      const fg = await window.api.getForegroundPkg(App.currentDevice);
-      if (fg) pkg = fg;
-    } catch {}
-    if (!pkg) pkg = DevicePanel.detectedPkg || null;
-    if (!pkg) pkg = 'com.overdare.overdare.dev';
-    const logPaths = getLogPaths(pkg);
-    App.toast(`대상 앱: ${pkg}`, 'info');
+    App.toast(`스크린샷 + 로그 추출 중... (dev / shipping 모두 시도)`, 'info');
 
-    App.toast('스크린샷 + 로그 추출 중...', 'info');
-
-    try {
-      const result = await window.api.pullAllLogs(App.currentDevice, [logPaths.app, logPaths.meta], { withScreenshot: true });
-      if (!result.success) {
-        App.toast(`추출 실패: ${result.error}`, 'error');
-        return;
-      }
-
-      this.lastLogsDir = result.logsDir;
-      const shotMsg = result.screenshotPath ? ' + 스크린샷' : '';
-      App.toast(`로그 ${result.count}개${shotMsg} 추출 완료`, 'success');
-      await window.api.openFolder(result.logsDir);
-    } catch (e) {
-      App.toast(`로그 추출 오류: ${e.message}`, 'error');
+    // 한 번의 추출 = 하나의 부모 세션 폴더. 그 안에 dev/, shipping/ 하위 폴더로 분리 저장.
+    const sessionInfo = await window.api.createLogSession();
+    if (!sessionInfo || !sessionInfo.success) {
+      App.toast(`✗ 세션 폴더 생성 실패`, 'error');
+      return;
     }
+    const sessionDir = sessionInfo.sessionDir;
+
+    const variantLabel = (pkg) => (pkg.endsWith('.dev') ? 'dev' : 'shipping');
+
+    const results = [];
+    for (let i = 0; i < APP_PKGS_MIRROR.length; i++) {
+      const pkg = APP_PKGS_MIRROR[i];
+      const logPaths = getLogPaths(pkg);
+      try {
+        // 첫 시도에서만 실제 스크린샷 캡처. 두 번째는 첫 결과를 복사.
+        const withScreenshot = i === 0;
+        const result = await window.api.pullAllLogs(
+          App.currentDevice,
+          [logPaths.app, logPaths.meta],
+          { withScreenshot, sessionDir, subDir: variantLabel(pkg) }
+        );
+        results.push({ pkg, result });
+      } catch (e) {
+        results.push({ pkg, result: { success: false, error: e.message } });
+      }
+    }
+
+    // 스크린샷을 양쪽 폴더 모두에 존재하도록 복사 (pull 실패해도 폴더 경로는 알고 있으므로 직접 생성/복사)
+    try {
+      const shotResult = results.find((r) => r.result && r.result.screenshotPath);
+      if (shotResult && shotResult.result.screenshotPath) {
+        const sep = sessionDir.includes('\\') ? '\\' : '/';
+        for (const r of results) {
+          if (r === shotResult) continue;
+          const targetDir = `${sessionDir}${sep}${variantLabel(r.pkg)}`;
+          await window.api.copyFile(shotResult.result.screenshotPath, targetDir);
+        }
+      }
+    } catch (e) { console.warn('screenshot copy failed', e); }
+
+    this.lastLogsDir = sessionDir;
+
+    const okWithLogs = results.filter((r) => r.result && r.result.success && (r.result.count || 0) > 0);
+    const summary = results
+      .map((r) => `${variantLabel(r.pkg)}=${(r.result && r.result.count) || 0}`)
+      .join(', ');
+    const shotPath = results.some((r) => r.result && r.result.screenshotPath) ? ' + 스크린샷' : '';
+
+    if (okWithLogs.length > 0) {
+      App.toast(`✓ 로그 추출 완료${shotPath} (${summary})`, 'success');
+    } else if (shotPath) {
+      App.toast(`⚠ 로그 파일 없음 (dev/shipping 모두 비어있음 — 앱 크래시·미실행 상태일 수 있음). 스크린샷은 저장됨`, 'info');
+    } else {
+      const firstErr = (results.find((r) => r.result && r.result.error) || {}).result;
+      App.toast(`✗ 추출 실패: ${(firstErr && firstErr.error) || 'unknown'}`, 'error');
+    }
+
+    // 부모 세션 폴더를 열기 — dev/ 와 shipping/ 두 하위 폴더가 한 화면에 보임
+    try { await window.api.openFolder(sessionDir); } catch {}
   },
 
   showLogViewer(result) {

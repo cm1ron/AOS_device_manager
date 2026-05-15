@@ -594,6 +594,44 @@ function setupIpcHandlers() {
     return name.replace(/[<>:"/\\|?*]/g, '_');
   }
 
+  ipcMain.handle('fs:copy-file', async (_, src, destDirOrPath) => {
+    const fs = require('fs');
+    try {
+      if (!src || !fs.existsSync(src)) return { success: false, error: 'src not found' };
+      let dest = destDirOrPath;
+      const looksLikeDir = !path.extname(destDirOrPath);
+      try {
+        const st = fs.statSync(destDirOrPath);
+        if (st.isDirectory()) dest = path.join(destDirOrPath, path.basename(src));
+      } catch {
+        if (looksLikeDir) {
+          fs.mkdirSync(destDirOrPath, { recursive: true });
+          dest = path.join(destDirOrPath, path.basename(src));
+        }
+      }
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.copyFileSync(src, dest);
+      return { success: true, path: dest };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('logs:create-session', async () => {
+    const fs = require('fs');
+    try {
+      const now = new Date();
+      const pad = (n) => n.toString().padStart(2, '0');
+      const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      const sessionDir = path.join(BASE_DIR, 'logs', today, time);
+      fs.mkdirSync(sessionDir, { recursive: true });
+      return { success: true, sessionDir };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('adb:pull-all-logs', async (_, serial, remotePaths, opts = {}) => {
     const fs = require('fs');
 
@@ -602,9 +640,14 @@ function setupIpcHandlers() {
     const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const time = `${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
     // 시간대별 서브폴더로 그룹화
-    const sessionDir = opts.withScreenshot
-      ? path.join(BASE_DIR, 'logs', today, time)
-      : path.join(BASE_DIR, 'logs', today);
+    let sessionDir = opts.sessionDir
+      ? opts.sessionDir
+      : (opts.withScreenshot
+          ? path.join(BASE_DIR, 'logs', today, time)
+          : path.join(BASE_DIR, 'logs', today));
+    if (opts.subDir) {
+      sessionDir = path.join(sessionDir, String(opts.subDir).replace(/[^a-zA-Z0-9_.-]/g, '_'));
+    }
     fs.mkdirSync(sessionDir, { recursive: true });
 
     const paths = Array.isArray(remotePaths) ? remotePaths : [remotePaths];
