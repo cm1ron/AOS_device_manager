@@ -21,8 +21,23 @@ let ptyMgr;
 
 const BASE_DIR = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
 
-const CONFIG_DIR = path.join(app.getPath('userData'), 'config');
+// portable exe 의 경우 BASE_DIR(exe 옆) 에 config 를 두어 버전업/이동 시에도 유실되지 않도록 함.
+// 패키지가 아닌 dev 환경에서는 기존처럼 userData 사용.
+const PORTABLE_CONFIG_DIR = path.join(BASE_DIR, 'qa-manager-data', 'config');
+const USERDATA_CONFIG_DIR = path.join(app.getPath('userData'), 'config');
+const CONFIG_DIR = app.isPackaged ? PORTABLE_CONFIG_DIR : USERDATA_CONFIG_DIR;
 const CONFIG_FILE = path.join(CONFIG_DIR, 'settings.json');
+
+// 1회성 마이그레이션: portable 에서 새 위치에 파일이 없는데 userData 에 있으면 복사
+try {
+  if (app.isPackaged) {
+    const legacyFile = path.join(USERDATA_CONFIG_DIR, 'settings.json');
+    if (!fs.existsSync(CONFIG_FILE) && fs.existsSync(legacyFile)) {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.copyFileSync(legacyFile, CONFIG_FILE);
+    }
+  }
+} catch {}
 
 function loadConfig() {
   try {

@@ -5,6 +5,45 @@ const VARIANT_PACKAGE = {
 };
 
 const CACHE_KEY = 'overdare:releases-cache';
+const TAGS_KEY = 'overdare:release-tags'; // { [releaseId]: ['검증완료', '이슈있음', ...] }
+
+function _readTags() {
+  try { return JSON.parse(localStorage.getItem(TAGS_KEY) || '{}'); } catch { return {}; }
+}
+function _writeTags(m) {
+  try { localStorage.setItem(TAGS_KEY, JSON.stringify(m)); } catch {}
+}
+function getTagsFor(releaseId) {
+  return _readTags()[releaseId] || [];
+}
+function addTagFor(releaseId, tag) {
+  const t = String(tag || '').trim().slice(0, 30);
+  if (!t) return false;
+  const m = _readTags();
+  const list = m[releaseId] || [];
+  if (list.includes(t)) return false;
+  list.push(t);
+  m[releaseId] = list;
+  _writeTags(m);
+  return true;
+}
+function removeTagFor(releaseId, tag) {
+  const m = _readTags();
+  const list = m[releaseId] || [];
+  m[releaseId] = list.filter((x) => x !== tag);
+  if (!m[releaseId].length) delete m[releaseId];
+  _writeTags(m);
+}
+// 텍스트 → HSL 색상 (해시 기반, 항상 같은 태그는 같은 색)
+function tagColor(tag) {
+  let h = 0;
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue}, 70%, 45%)`;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 const AppsPanel = {
   releases: { dev: [], shipping: [] },
@@ -224,7 +263,8 @@ const AppsPanel = {
     const filter = (document.getElementById('overdare-search').value || '').toLowerCase();
     const items = this.releases[variant].filter((r) => {
       if (!filter) return true;
-      return ((r.displayVersion || '') + ' ' + (r.buildVersion || '') + ' ' + (r.releaseNotes || '')).toLowerCase().includes(filter);
+      const tags = getTagsFor(r.releaseId).join(' ');
+      return ((r.displayVersion || '') + ' ' + (r.buildVersion || '') + ' ' + (r.releaseNotes || '') + ' ' + tags).toLowerCase().includes(filter);
     });
     if (!items.length) {
       list.innerHTML = '<div class="overdare-empty">표시할 빌드가 없습니다.</div>';
@@ -234,6 +274,37 @@ const AppsPanel = {
     list.querySelectorAll('[data-action="install"]').forEach((btn) => {
       btn.addEventListener('click', () => this.installRelease(btn.dataset.variant, btn.dataset.releaseId));
     });
+    list.querySelectorAll('[data-action="tag-remove"]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeTagFor(btn.dataset.releaseId, btn.dataset.tag);
+        this.renderColumn(variant);
+      });
+    });
+    list.querySelectorAll('[data-action="tag-add"]').forEach((btn) => {
+      btn.addEventListener('click', () => this._showTagInput(btn.dataset.releaseId, variant));
+    });
+    list.querySelectorAll('[data-tag-input]').forEach((inp) => {
+      const commit = (save) => {
+        if (save && inp.value.trim()) {
+          addTagFor(inp.dataset.releaseId, inp.value);
+        }
+        this._tagEditing = null;
+        this.renderColumn(variant);
+      };
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(true); }
+        else if (e.key === 'Escape') { e.preventDefault(); commit(false); }
+      });
+      inp.addEventListener('blur', () => commit(true));
+    });
+  },
+
+  _showTagInput(releaseId, variant) {
+    this._tagEditing = `${variant}:${releaseId}`;
+    this.renderColumn(variant);
+    const inp = document.querySelector(`[data-tag-input][data-release-id="${releaseId}"]`);
+    if (inp) inp.focus();
   },
 
   renderCard(r, variant) {
@@ -275,12 +346,27 @@ const AppsPanel = {
         : '<div class="overdare-dev-progress"><div class="dev-msg">준비 중...</div></div>';
       progressBlock = `<div class="overdare-multi-progress">${rows}</div>`;
     }
+    const tags = getTagsFor(r.releaseId);
+    const editing = this._tagEditing === `${variant}:${r.releaseId}`;
+    const tagsHtml = tags.map((t) => `
+      <span class="overdare-tag" style="background:${tagColor(t)}">
+        <span class="t">${escapeHtml(t)}</span>
+        <button class="x" data-action="tag-remove" data-release-id="${r.releaseId}" data-tag="${escapeHtml(t)}" title="삭제">×</button>
+      </span>`).join('');
+    const tagsBlock = `
+      <div class="overdare-tags">
+        ${tagsHtml}
+        ${editing
+          ? `<input class="overdare-tag-input" data-tag-input data-release-id="${r.releaseId}" placeholder="태그 입력 후 Enter" maxlength="30" />`
+          : `<button class="overdare-tag-add" data-action="tag-add" data-release-id="${r.releaseId}" title="태그 추가">+ 태그</button>`}
+      </div>`;
     return `
       <div class="overdare-card" data-release-id="${r.releaseId}">
         <div class="overdare-card-main">
           <div class="overdare-card-title">${r.displayVersion || '(no version)'}</div>
           <div class="overdare-card-meta">build ${r.buildVersion || '-'} · ${date}</div>
           ${notes ? `<div class="overdare-card-notes">${notes}</div>` : ''}
+          ${tagsBlock}
           ${progressBlock}
         </div>
         <div class="overdare-card-actions">

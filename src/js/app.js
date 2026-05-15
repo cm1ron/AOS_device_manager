@@ -275,6 +275,7 @@ const App = {
     serialEl.textContent = serial;
     input.value = current;
     modal.style.display = 'flex';
+    modal.style.zIndex = '10000'; // 다른 모달(예: 무선 디버깅) 위에 표시
     setTimeout(() => { input.focus(); input.select(); }, 50);
     this._renameTargetSerial = serial;
   },

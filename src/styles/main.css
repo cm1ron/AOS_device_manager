@@ -3061,6 +3061,35 @@ body.tree-resizing * { cursor: ew-resize !important; }
   white-space:nowrap;
 }
 [data-theme="light"] .overdare-installed-tag { background:rgba(16,185,129,0.1); }
+
+/* user tags */
+.overdare-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center; }
+.overdare-tag {
+  display:inline-flex; align-items:center; gap:4px;
+  font-size:11px; font-weight:600; color:#fff;
+  padding:3px 4px 3px 8px; border-radius:12px;
+  box-shadow:0 1px 2px rgba(0,0,0,0.25);
+  line-height:1;
+}
+.overdare-tag .x {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:16px; height:16px; border-radius:50%;
+  background:rgba(255,255,255,0.25); color:#fff; border:none;
+  font-size:13px; font-weight:700; cursor:pointer; padding:0;
+}
+.overdare-tag .x:hover { background:rgba(255,255,255,0.45); }
+.overdare-tag-add {
+  font-size:11px; color:var(--text-secondary, #b8b8c4);
+  background:transparent; border:1px dashed var(--border, #444);
+  padding:2px 8px; border-radius:12px; cursor:pointer;
+}
+.overdare-tag-add:hover { color:var(--text); border-color:var(--text-secondary, #888); }
+.overdare-tag-input {
+  font-size:11px; padding:3px 8px; border-radius:12px;
+  background:var(--bg, #1e1e2a); color:var(--text, #fff);
+  border:1px solid var(--accent, #3b82f6);
+  outline:none; width:160px;
+}
 .overdare-progress {
   position:absolute; left:0; right:0; bottom:0; height:18px;
   background:rgba(0,0,0,0.25); border-bottom-left-radius:8px; border-bottom-right-radius:8px;
